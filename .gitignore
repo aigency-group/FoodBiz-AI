@@ -169,11 +169,7 @@ dmypy.json
 cython_debug/
 
 # PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+.idea/
 
 # Abstra
 # Abstra is an AI-powered process automation framework.
@@ -205,3 +201,28 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ----------------------------------------------------------------
+# Project-specific ignores for FoodBiz-AI
+# ----------------------------------------------------------------
+
+# macOS specific
+.DS_Store
+
+# Node.js dependencies
+frontend/node_modules/
+
+# Frontend build output
+frontend/build/
+
+# Documentation
+docs/
+
+# Reference files
+reference/
+
+# Temporary or note files in root
+query.txt
+role_card.txt
+todolist.txt
+데이터_모델_상세_기획서.txt
