@@ -28,17 +28,17 @@ const heroInsights = [
   {
     title: '유동성 버퍼',
     metric: '운영자금 D+1',
-    description: '우리은행 위비 WON과 연동해 심사 완료 즉시 실행',
+    description: '필요 자금이 생기면 하루 안에 전환할 수 있는 한도를 확인하세요.',
   },
   {
     title: '금리 혜택',
     metric: '최저 연 1.8%',
-    description: '보증·정책 연계 금리 자동 비교',
+    description: '보증 및 정책 상품 금리를 비교해 유리한 조건을 선택하세요.',
   },
   {
     title: 'SIGNAL 케어',
     metric: '서류 자동작성',
-    description: '필수 제출 서류를 계정별로 채워주는 LLM 워크플로',
+    description: '필수 제출 서류를 계정 정보로 미리 채워 편하게 제출할 수 있습니다.',
   },
 ];
 
@@ -170,12 +170,12 @@ const FinanceScreenComponent: React.FC = () => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ display: 'grid', gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: palette.primary, letterSpacing: 2 }}>SIGNAL FINANCE</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: palette.primary, letterSpacing: 2 }}>Finance overview</span>
                 <h2 style={{ fontSize: 20, fontWeight: 800, color: palette.text }}>
-                  오늘의 금융 신호등과 개인사업자 솔루션
+                  오늘 확인할 주요 금융 정보
                 </h2>
                 <p style={{ fontSize: 12, color: palette.subtext, lineHeight: 1.5 }}>
-                  매출·원가·리뷰 데이터를 바탕으로 우리은행 개인사업자 대출과 수신 상품을 큐레이션했어요. 필요한 자금과 납입 계획을 시그널 색상으로 확인하세요.
+                  최근 매출·리뷰 지표를 기준으로 추천 상품과 진행 현황을 한곳에서 정리했습니다.
                 </p>
               </div>
               <div
@@ -192,7 +192,7 @@ const FinanceScreenComponent: React.FC = () => {
                   border: '1px solid rgba(174,197,232,0.5)',
                 }}
               >
-                <Sparkles size={14} /> 실시간 데이터 링크 완료
+                <Sparkles size={14} /> 최신 데이터 반영됨
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12 }}>

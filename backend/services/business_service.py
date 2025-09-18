@@ -1,9 +1,14 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .supabase_client import supabase
 
 
-def upsert_business(owner_id: str, store_name: str, business_code: str, industry: str | None = None) -> Dict[str, Any]:
+def upsert_business(
+    owner_id: str,
+    store_name: str,
+    business_code: str,
+    industry: Optional[str] = None,
+) -> Dict[str, Any]:
     payload = {
         "owner_id": owner_id,
         "name": store_name,
