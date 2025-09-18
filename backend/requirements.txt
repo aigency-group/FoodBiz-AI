@@ -1,0 +1,23 @@
+fastapi
+uvicorn[standard]
+websockets
+python-dotenv
+
+# LangChain RAG
+langchain
+langchain-openai
+langchain-community
+unstructured[md]
+
+# Supabase & Auth
+supabase
+
+# Testing
+pytest
+httpx
+python-multipart
+pytest-asyncio
+
+# Formatting & Linting
+black
+ruff
