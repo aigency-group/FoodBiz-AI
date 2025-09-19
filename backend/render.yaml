@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: foodbiz-ai-backend
+    runtime: python
+    region: singapore  # 한국에서 가장 가까움
+    plan: free  # 또는 starter ($7/월)
+
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+
+    startCommand: |
+      uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    envVars:
+      # Supabase 설정
+      - key: SUPABASE_URL
+        value: https://bolcgajcoixxmhbirkmi.supabase.co
+
+      - key: SUPABASE_KEY
+        sync: false  # 대시보드에서 직접 입력 (보안)
+
+      - key: SUPABASE_JWT_SECRET
+        sync: false  # 대시보드에서 직접 입력 (보안)
+
+      # 보안 키
+      - key: SECRET_KEY
+        sync: false  # 대시보드에서 직접 입력 (보안)
+
+      # OpenAI 설정
+      - key: OPENAI_API_KEY
+        sync: false  # 대시보드에서 직접 입력 (보안)
+
+      - key: RAG_EMBEDDING_MODEL
+        value: text-embedding-3-large
+
+      # ChromaDB 설정 (주의: 영구 저장소 필요)
+      - key: RAG_VECTOR_DB_PATH
+        value: /opt/render/project/src/chroma_db
+
+    # 디스크 설정 (ChromaDB 영구 저장용)
+    disk:
+      name: chroma-db-disk
+      mountPath: /opt/render/project/src/chroma_db
+      sizeGB: 1  # 무료 플랜은 1GB까지
