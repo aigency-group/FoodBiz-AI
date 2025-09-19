@@ -1,69 +1,69 @@
-# RAG Pipeline Design v1
-
-This document outlines the architecture of the version 1 Retrieval-Augmented Generation (RAG) pipeline.
+# Hybrid RAG Architecture (v2)
 
 ## 1. Overview
+The FoodBiz AI assistant now combines two retrieval strategies:
 
-The RAG pipeline enhances the language model's responses by providing it with relevant, up-to-date information from a private knowledge base. This ensures that the AI's answers are grounded in factual data and can include specific details from the provided documents.
+1. **Document Vector Search** — for policy, 가이드, 리뷰 요약 등 텍스트 기반 질문.
+2. **Real-time SQL Timeseries** — for 매출/추이 등 수치형 의도. Supabase `public.metrics_daily` 테이블을 직접 조회합니다.
 
-## 2. Architecture
-
-The pipeline consists of two main stages: **Indexing** and **Retrieval & Generation**.
-
-### 2.1. Indexing Stage (Offline)
-
-This stage processes the source documents and prepares them for efficient retrieval.
-
-1.  **Load Documents:** Source documents (e.g., `.txt`, `.md`, `.pdf`) are loaded from the `/data` directory.
-2.  **Split Text:** The loaded documents are split into smaller, semantically meaningful chunks.
-3.  **Create Embeddings:** Each chunk is passed to an embedding model (e.g., OpenAI's `text-embedding-ada-002`) which converts the text into a numerical vector representation.
-4.  **Store in Vector Database:** The text chunks and their corresponding embeddings are stored in **Supabase Vector Store** using the `pgvector` extension.
+A lightweight router inspects the 사용자 쿼리. 키워드(매출·추이·전주 등)가 감지되면 SQL 경로, 그렇지 않으면 벡터 검색이 선택됩니다. 모든 응답은 공통 스키마를 준수합니다.
 
 ```mermaid
 graph TD
-    A[Source Documents in /data] -->|Load| B(Document Loader)
-    B -->|Split| C(Text Splitter)
-    C -->|For each chunk| D(Embedding Model)
-    D -->|Vector| E[Supabase Vector Store]
-    C -->|Text Chunk| E
+    Q[사용자 질의] --> R{Hybrid Router}
+    R -->|SQL_TIME_SERIES| S[Supabase metrics_daily]
+    S --> M[Timeseries 계산 & LLM 해설]
+    R -->|VECTOR_SEARCH| V[Chroma Vector Store]
+    V --> P[LLM 문서 요약]
+    M --> E[Unified Response]
+    P --> E
+    E --> C[answer + sources + charts + calculations]
 ```
 
-### 2.2. Retrieval & Generation Stage (Online)
-
-This stage is executed in real-time when a user submits a query.
-
-1.  **Receive Query:** The user's query is received at the `/rag/query` API endpoint.
-2.  **Embed Query:** The query is converted into an embedding vector using the same model as in the indexing stage.
-3.  **Similarity Search:** The query vector is used to perform a similarity search against the vectors in the **Supabase Vector Store**. The top-k most similar document chunks are retrieved.
-4.  **Create Prompt:** A detailed prompt is constructed, combining the user's original query with the content of the retrieved document chunks.
-5.  **Generate Response:** The combined prompt is sent to a powerful language model (e.g., OpenAI's `gpt-4`). The model generates a comprehensive answer based on the provided context.
-6.  **Include Sources:** The response includes information about the source documents (e.g., file name, page number) to ensure transparency and allow for verification.
-
-```mermaid
-graph TD
-    subgraph API Request
-        A[User Query] -->|Embed| B(Query Vector)
-    end
-    subgraph RAG Pipeline
-        C[Supabase Vector Store] -->|Similarity Search| D{Retrieve Top-K Chunks}
-        B --> D
-        D -->|Context| E(Prompt Template)
-        A -->|Question| E
-        E --> F(LLM - gpt-4)
-        F --> G[Generated Response]
-        D -->|Metadata| H{Format Sources}
-    end
-    subgraph API Response
-        G --> I{Final Answer}
-        H --> I
-    end
+## 2. Document Indexing
 ```
+File location: docs/policies/**/*.{md,txt,pdf}
+Persist directory: data/chroma
+Splitter: RecursiveCharacterTextSplitter (chunk 1000 / overlap 150)
+Embeddings: OpenAI (model configurable via RAG_EMBEDDING_MODEL)
+Vector store: Chroma (disk persistence)
+```
+`POST /rag/index` rebuilds the index. Each Document chunk stores `source` 경로와 `uploaded_at` ISO timestamp.
 
-## 3. Key Components (v1)
+## 3. Vector Retrieval & Generation
+1. `vector_search(query, top_k)` loads the persisted Chroma store.
+2. 상위 k개의 문서 chunk 내용을 컨텍스트로 구성.
+3. `ChatOpenAI`에 시스템 메시지 + 컨텍스트 전달 → 한국어 해설 생성.
+4. 응답에는 문서 출처(`type: doc`)와 메타데이터가 포함됩니다.
 
--   **Framework:** LangChain
--   **Document Loader:** `UnstructuredMarkdownLoader` for text files.
--   **Text Splitter:** `RecursiveCharacterTextSplitter`.
--   **Embedding Model:** OpenAI `text-embedding-ada-002`.
--   **Vector Store:** `SupabaseVectorStore` (using pgvector).
--   **LLM:** OpenAI `gpt-4` (or similar).
+## 4. SQL Timeseries Path
+1. `fetch_timeseries(business_id, from, to)`가 `public.metrics_daily`에서 범위 데이터를 조회합니다.
+2. 결과를 `{x: ISO date, y: net_sales}` 시리즈로 정규화하고 7일 이동평균/증감률을 계산합니다.
+3. 추가로 `public.reviews` 요약과 `policy_products` 추천 목록을 수집하여 LLM 컨텍스트에 포함합니다.
+4. `llm_explain_timeseries`가 수치형 데이터와 부가 정보를 한국어로 요약합니다 (LLM 실패 시 규칙 기반 문구).
+5. 차트(`type: timeseries`), 계산 결과, 관련 SQL 출처가 응답에 포함됩니다.
+
+## 5. Unified Response Schema
+```jsonc
+{
+  "answer": "…LLM 해설…",
+  "sources": [
+    { "type": "sql", "name": "public.metrics_daily", "meta": {"from": "2025-01-01", "to": "2025-01-30"} },
+    { "type": "doc", "name": "docs/policies/eligibility.md", "meta": {"uploaded_at": "2025-02-01T02:13:00"} }
+  ],
+  "charts": [
+    { "type": "timeseries", "series": [{ "name": "매출", "data": [{"x": "2025-01-01", "y": 432100 }, … ] }] }
+  ],
+  "calculations": { "moving_avg_7": 418400.0, "pct_change_7d": -0.12 }
+}
+```
+모든 경로에서 동일한 스키마가 유지되므로 프런트엔드와 WebSocket은 단일 렌더러로 처리할 수 있습니다.
+
+## 6. Logging & Monitoring
+- JSON 로그 필드: `router_decision`, `top_k`, `sql_range`, `latency_ms`, `biz_id_hash`, `error_code`.
+- WebSocket 연결/해제 이벤트, SSE 종료 이벤트도 구조화 로그로 기록합니다.
+- 로그에는 PII와 원문 카드번호 등은 포함되지 않습니다 (business id는 SHA-256 hash 12자 사용).
+
+## 7. Fallbacks
+- 벡터 검색에서 문서를 찾지 못하면 LLM이 일반 답변을 제공하고 SQL 제안 메타(`suggested_range`)를 첨부합니다.
+- SQL 경로에서 데이터가 비어 있으면 차트는 생략되고 안내 문구가 반환됩니다.

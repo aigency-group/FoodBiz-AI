@@ -158,3 +158,15 @@ begin
 end;
 $$ language plpgsql security definer;
 
+-- 7. Conversation logs for chat history
+create table if not exists public.conversation_logs (
+  id uuid primary key default uuid_generate_v4(),
+  business_id uuid references public.businesses(id) on delete cascade,
+  user_id uuid,
+  role text not null check (role in ('user', 'assistant', 'system')),
+  message text not null,
+  created_at timestamptz default now()
+);
+
+create index if not exists conversation_logs_business_created_idx
+  on public.conversation_logs (business_id, created_at desc);

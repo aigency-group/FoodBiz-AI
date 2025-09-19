@@ -13,6 +13,8 @@ export interface WebSocketMessage {
   content?: string;
   response?: string;
   sources?: any[];
+  payload?: any;
+  detail?: string;
 }
 
 export const useWebSocket = (url: string | null) => {

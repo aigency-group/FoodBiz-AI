@@ -46,7 +46,7 @@ def _build_messages(query: str, extra_context: Optional[Iterable[str]] = None):
     return messages
 
 
-def _build_chat_model(streaming: bool = True) -> ChatOpenAI:
+def build_chat_model(streaming: bool = True) -> ChatOpenAI:
     model_name = os.getenv("CHATBOT_MODEL_NAME", "gpt-4")
     return ChatOpenAI(
         model_name=model_name,
@@ -75,7 +75,7 @@ async def stream_chat_response(
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Stream tokens from the base chat model without RAG retrieval."""
     full_response = ""
-    llm = _build_chat_model(streaming=True)
+    llm = build_chat_model(streaming=True)
 
     try:
         async for chunk in llm.astream(_build_messages(query, extra_context)):
@@ -102,6 +102,6 @@ async def _generate_fallback_response(
     query: str,
     extra_context: Optional[Iterable[str]] = None,
 ) -> str:
-    fallback_llm = _build_chat_model(streaming=False)
+    fallback_llm = build_chat_model(streaming=False)
     ai_message = await fallback_llm.ainvoke(_build_messages(query, extra_context))
     return getattr(ai_message, "content", str(ai_message))

@@ -1,13 +1,78 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { TrendingUp, AlertTriangle, Sparkles, ArrowRight, Landmark } from 'lucide-react';
+import { LineChart, Line, XAxis, Tooltip, ResponsiveContainer, YAxis, CartesianGrid } from 'recharts';
 import { useAuth } from '../auth/AuthContext';
 import { useMetrics } from '../hooks/useMetrics';
 import { useReviews } from '../hooks/useReviews';
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-type Msg = { from: 'bot' | 'me'; text: string; sources?: any[] };
+type HybridSource = {
+  type: 'sql' | 'doc';
+  name: string;
+  meta?: Record<string, any>;
+};
+
+type HybridChartSeries = {
+  name: string;
+  data: { x: string; y: number }[];
+};
+
+type HybridChart = {
+  type: 'timeseries';
+  series: HybridChartSeries[];
+};
+
+type HybridCalculations = Record<string, number | null>;
+
+type Msg = {
+  from: 'bot' | 'me';
+  text: string;
+  sources?: HybridSource[];
+  charts?: HybridChart[];
+  calculations?: HybridCalculations;
+};
+
+const formatCurrency = (value: number) => `${Math.round(value).toLocaleString()}원`;
+const CALC_LABEL_MAP: Record<string, string> = {
+  moving_avg_7: '7일 이동평균',
+  pct_change_7d: '7일 전 대비 증감률',
+};
+
+const TimeseriesChartCard: React.FC<{ chart: HybridChart }> = ({ chart }) => {
+  if (chart.type !== 'timeseries' || !chart.series?.length) {
+    return null;
+  }
+  const primarySeries = chart.series[0];
+  if (!primarySeries?.data?.length) {
+    return null;
+  }
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        background: '#FFFFFF',
+        borderRadius: 14,
+        padding: 12,
+        boxShadow: '0 8px 20px rgba(30,79,158,0.12)',
+      }}
+    >
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={primarySeries.data}>
+          <CartesianGrid stroke="#E6E9EE" strokeDasharray="3 3" />
+          <XAxis dataKey="x" tick={{ fontSize: 11, fill: '#6B7280' }} tickMargin={8} />
+          <YAxis tickFormatter={(value) => `${Math.round(Number(value) / 10000)}만`} tick={{ fontSize: 11, fill: '#6B7280' }} width={48} />
+          <Tooltip
+            formatter={(value: number) => [formatCurrency(Number(value)), '매출']}
+            labelFormatter={(label: string) => label}
+          />
+          <Line type="monotone" dataKey="y" stroke="#1E4F9E" strokeWidth={2} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
 
 type SignalTone = 'green' | 'amber' | 'red';
 
@@ -159,6 +224,90 @@ export function ChatScreen() {
   const { summary: metricsSummary } = useMetrics();
   const { summary: reviewSummary } = useReviews();
 
+  const renderCalculations = useCallback(
+    (calculations?: HybridCalculations) => {
+      if (!calculations) return null;
+      const entries = Object.entries(calculations).filter(
+        ([, value]) => value !== null && value !== undefined,
+      );
+      if (!entries.length) return null;
+      return (
+        <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+          {entries.map(([key, value]) => {
+            const label = CALC_LABEL_MAP[key] ?? key;
+            const numeric = Number(value);
+            const displayValue = key.includes('pct')
+              ? `${(numeric * 100).toFixed(2)}%`
+              : formatCurrency(numeric);
+            return (
+              <div
+                key={key}
+                style={{
+                  padding: '6px 8px',
+                  background: 'rgba(30,79,158,0.08)',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  color: '#123B70',
+                  fontWeight: 600,
+                }}
+              >
+                {label}: {displayValue}
+              </div>
+            );
+          })}
+        </div>
+      );
+    },
+    [],
+  );
+
+  const renderSources = useCallback((sources?: HybridSource[]) => {
+    if (!sources?.length) return null;
+    const metaLabel: Record<string, string> = {
+      from: '시작일',
+      to: '종료일',
+      suggested_range: '제안 범위',
+      uploaded_at: '업로드',
+      score: '유사도',
+    };
+    return (
+      <div style={{ marginTop: 12, borderTop: '1px solid rgba(18,59,112,0.12)', paddingTop: 8 }}>
+        <p style={{ fontSize: 10, color: '#42526E', marginBottom: 6 }}>출처</p>
+        {sources.map((source, index) => {
+          const entries = Object.entries(source.meta ?? {})
+            .filter(([key]) => key !== 'business_id')
+            .map(([key, value]) => `${metaLabel[key] ?? key}: ${value}`)
+            .join(' · ');
+          const badge = source.type === 'sql' ? '데이터' : '문서';
+          return (
+            <div
+              key={`${source.name}-${index}`}
+              style={{
+                display: 'grid',
+                gap: 4,
+                marginBottom: 8,
+                fontSize: 11,
+                color: '#42526E',
+              }}
+            >
+              <span style={{ fontWeight: 600, color: '#123B70' }}>
+                [{badge}] {source.name}
+              </span>
+              {entries && <span>{entries}</span>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, []);
+
+  const renderCharts = (charts?: HybridChart[]) => {
+    if (!charts?.length) return null;
+    return charts.map((chart, index) => (
+      <TimeseriesChartCard chart={chart} key={`${chart.type}-${index}`} />
+    ));
+  };
+
   const signalTone = useMemo<SignalTone>(() => {
     if (!currentUser) return 'amber';
     const email = currentUser.sub || currentUser.id || '';
@@ -220,10 +369,26 @@ export function ChatScreen() {
       }
 
       const data = await response.json();
-      setMessages((m) => [...m, { from: 'bot', text: data.response, sources: data.sources }]);
+      const hybridMessage: Msg = {
+        from: 'bot',
+        text: data.answer || '답변을 생성하지 못했습니다.',
+        sources: data.sources || [],
+        charts: data.charts || [],
+        calculations: data.calculations || {},
+      };
+      setMessages((m) => [...m, hybridMessage]);
     } catch (error) {
       console.error('Failed to fetch RAG query', error);
-      setMessages((m) => [...m, { from: 'bot', text: '죄송합니다. 답변을 가져오는 중 오류가 발생했습니다.' }]);
+      setMessages((m) => [
+        ...m,
+        {
+          from: 'bot',
+          text: '죄송합니다. 답변을 가져오는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+          sources: [],
+          charts: [],
+          calculations: {},
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -333,26 +498,9 @@ export function ChatScreen() {
         {messages.map((m, i) => (
           <Bubble key={i} from={m.from}>
             {m.text}
-            {m.sources && m.sources.length > 0 && (
-              <div style={{ marginTop: 8, borderTop: '1px solid rgba(18,59,112,0.12)', paddingTop: 8 }}>
-                <p style={{ fontSize: 10, color: '#42526E' }}>출처</p>
-                {m.sources.map((s, j) => (
-                  <div
-                    key={j}
-                    style={{ fontSize: 10, color: '#42526E', marginTop: 4, padding: 6, background: 'rgba(230,238,250,0.6)', borderRadius: 6 }}
-                  >
-                    <p><strong>{s.source_name}</strong></p>
-                    <p style={{
-                      wordBreak: 'keep-all',
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
-                      whiteSpace: 'normal',
-                      lineHeight: 1.4
-                    }}>...{s.snippet}...</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            {renderCharts(m.charts)}
+            {renderCalculations(m.calculations)}
+            {renderSources(m.sources)}
           </Bubble>
         ))}
         {isLoading && <Bubble from="bot">답변을 준비하고 있어요...</Bubble>}

@@ -4,9 +4,13 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-import json
 import asyncio
-from datetime import date
+import hashlib
+import json
+import logging
+import time
+from datetime import date, datetime
+from typing import Optional, List, Dict
 from fastapi import (
     FastAPI,
     WebSocket,
@@ -23,7 +27,10 @@ from pydantic import BaseModel
 import models
 
 from services.supabase_client import supabase
-from services import rag_service
+from services import rag_service, conversation_service
+from app.services.hybrid_router import route as hybrid_route
+from app.services.metrics_service import fetch_timeseries, llm_explain_timeseries
+from app.services import rag_indexer
 from services.metrics_service import get_metrics_summary, list_metrics_daily, DATA_DELAY_NOTICE
 from services.reviews_service import (
     get_review_summary,
@@ -31,7 +38,7 @@ from services.reviews_service import (
     list_all_reviews,
     review_source_breakdown,
 )
-from services.policy_service import list_policy_recommendations, list_policy_workflows
+from services.policy_service import list_policy_recommendations, list_policy_workflows, list_policy_products
 from services.business_service import upsert_business
 
 app = FastAPI(
@@ -39,6 +46,136 @@ app = FastAPI(
     description="API for the Small Business Symbiotic AI Financial Service Web App",
     version="0.1.0",
 )
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger("foodbiz.ai")
+
+
+def _hash_business_id(biz_id: Optional[str]) -> Optional[str]:
+    if not biz_id:
+        return None
+    digest = hashlib.sha256(biz_id.encode("utf-8")).hexdigest()
+    return digest[:12]
+
+
+def _parse_iso_date(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).date()
+    except ValueError:
+        return None
+
+
+def _resolve_range(date_from: Optional[date], date_to: Optional[date]) -> tuple[date, date]:
+    end = date_to or date.today()
+    start = date_from or (end - timedelta(days=30))
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+async def _generate_llm_answer(query: str, contexts: Optional[list[str]] = None) -> str:
+    final_response = ""
+    async for event in rag_service.stream_chat_response(query, extra_context=contexts):
+        if event["type"] == "final":
+            final_response = event["response"]
+    return final_response
+
+
+def _format_calculations(stats: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
+    formatted: Dict[str, Optional[float]] = {}
+    for key, value in stats.items():
+        if isinstance(value, (int, float)):
+            formatted[key] = round(float(value), 4)
+        else:
+            formatted[key] = None
+    return formatted
+
+
+def _gather_business_context(biz_id: Optional[str]) -> tuple[List[str], List[Dict[str, Optional[str]]]]:
+    if not biz_id:
+        return [], []
+
+    contexts: List[str] = []
+    sources: List[Dict[str, Optional[str]]] = []
+
+    try:
+        review_summary = get_review_summary(biz_id)
+        if review_summary:
+            contexts.append(
+                (
+                    f"[리뷰 요약] 총 {review_summary['review_count']}건, 평균 {review_summary['average_rating']:.2f}점, "
+                    f"부정 {review_summary['negative_count']}건"
+                )
+            )
+            recent_reviews = list_recent_reviews(biz_id, limit=3)
+            for review in recent_reviews:
+                content = (review.get("content") or "").strip()
+                rating = review.get("rating")
+                if content:
+                    contexts.append(f"리뷰 ({rating}점): {content[:160]}")
+            sources.append(
+                {
+                    "type": "sql",
+                    "name": "public.reviews",
+                    "meta": {
+                        "business_id": biz_id,
+                        "review_count": str(review_summary.get("review_count")),
+                        "average_rating": f"{review_summary.get('average_rating', 0):.2f}",
+                    },
+                }
+            )
+    except Exception as error:  # pragma: no cover - Supabase access may fail in tests
+        logger.warning("Failed to build review context: %s", error)
+
+    try:
+        recommendations = list_policy_recommendations(biz_id)
+        if recommendations:
+            top_names = [rec.get("name") for rec in recommendations[:3] if rec.get("name")]
+            if top_names:
+                contexts.append(f"[추천 정책 상품] {', '.join(top_names)}")
+                sources.append(
+                    {
+                        "type": "sql",
+                        "name": "public.policy_products",
+                        "meta": {
+                            "business_id": biz_id,
+                            "recommendations": ", ".join(top_names),
+                        },
+                    }
+                )
+    except Exception as error:  # pragma: no cover
+        logger.warning("Failed to build policy context: %s", error)
+
+    if not any(source.get("name") == "public.policy_products" for source in sources):
+        try:
+            product_groups = list_policy_products()
+            top_products: List[str] = []
+            for group in product_groups:
+                for product in group.get("products", []):
+                    if product.get("name"):
+                        top_products.append(product["name"])
+                    if len(top_products) >= 3:
+                        break
+                if len(top_products) >= 3:
+                    break
+
+            if top_products:
+                contexts.append(f"[주요 금융 상품] {', '.join(top_products)}")
+                sources.append(
+                    {
+                        "type": "sql",
+                        "name": "public.policy_products",
+                        "meta": {
+                            "top_products": ", ".join(top_products),
+                        },
+                    }
+                )
+        except Exception as error:  # pragma: no cover
+            logger.warning("Failed to build fallback policy context: %s", error)
+
+    return contexts, sources
 
 # CORS 미들웨어 추가
 app.add_middleware(
@@ -56,7 +193,7 @@ app.add_middleware(
 
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 
 @app.post("/auth/signup", status_code=status.HTTP_201_CREATED, tags=["Authentication"])
@@ -198,6 +335,16 @@ class MetricsDailyResponse(BaseModel):
     data_delay_notice: str = DATA_DELAY_NOTICE
 
 
+class RAGIndexRequest(BaseModel):
+    docs_dir: Optional[str] = None
+    persist_dir: Optional[str] = None
+
+
+class RAGIndexResponse(BaseModel):
+    indexed_chunks: int
+    persist_directory: str
+
+
 class ReviewSummaryResponse(BaseModel):
     business_id: str
     review_count: int
@@ -234,70 +381,207 @@ class BusinessSetupRequest(BaseModel):
     industry: str | None = None
 
 
-def _build_business_context(business_id: str | None) -> list[str]:
-    if not business_id:
-        return []
-
-    try:
-        metrics_summary = get_metrics_summary(business_id)
-        review_summary = get_review_summary(business_id)
-        recent_reviews = list_recent_reviews(business_id, limit=5)
-    except Exception as error:
-        print(f"Failed to build business context for {business_id}: {error}")
-        return []
-
-    additional_context = "\n\n[사장님 가게 데이터]\n"
-    additional_context += (
-        f"- 최신 매출 요약: {json.dumps(metrics_summary, ensure_ascii=False)}\n"
-    )
-    additional_context += (
-        f"- 리뷰 요약: {json.dumps(review_summary, ensure_ascii=False)}\n"
-    )
-
-    if recent_reviews:
-        additional_context += "- 최신 리뷰 5건:\n"
-        for review in recent_reviews:
-            reviewed_at = review.get("reviewed_at", "")
-            date_text = reviewed_at[:10] if isinstance(reviewed_at, str) else str(reviewed_at)
-            additional_context += (
-                f"  - {date_text}: {review.get('content', '')} (평점: {review.get('rating')})\n"
-            )
-
-    return [additional_context]
-
-
 @app.post("/rag/query", response_model=models.RagQueryResponse, tags=["AI"])
 async def rag_query(payload: models.RagQueryRequest, business_id: str | None = Query(None)):
-    """Submits a query to the chat model."""
-    print(f"Query: {payload.query}")
+    start_ts = time.perf_counter()
+    biz_id = business_id or getattr(payload, "business_id", None)
+    router_decision = hybrid_route(payload.query)
+    hashed_biz = _hash_business_id(biz_id)
+
+    sources: List[dict] = []
+    charts: List[dict] = []
+    calculations: Dict[str, Optional[float]] = {}
+    sql_range_meta = None
+    top_k = 0
+    error_code = None
+
+    if biz_id:
+        conversation_service.log_message(
+            business_id=biz_id,
+            role="user",
+            message=payload.query,
+        )
+
+    context_lines, supplemental_sources = _gather_business_context(biz_id)
 
     try:
-        # Use business_id from query param or request body if provided
-        biz_id = business_id or getattr(payload, "business_id", None)
-        extra_context = _build_business_context(biz_id)
+        if router_decision == "SQL_TIME_SERIES":
+            date_from = _parse_iso_date(payload.date_from)
+            date_to = _parse_iso_date(payload.date_to)
+            start_date, end_date = _resolve_range(date_from, date_to)
+            sql_range_meta = {"from": start_date.isoformat(), "to": end_date.isoformat()}
 
-        final_result = None
-        async for result in rag_service.stream_chat_response(
-            payload.query,
-            extra_context=extra_context,
-        ):
-            if result["type"] == "final":
-                final_result = result
-                break
+            series, stats = fetch_timeseries(biz_id or "", start_date, end_date)
+            calculations = _format_calculations(stats)
 
-        if not final_result:
-            raise HTTPException(
-                status_code=500, detail="Failed to get a final response from the chat model."
+            if series:
+                charts = [
+                    {
+                        "type": "timeseries",
+                        "series": [
+                            {
+                                "name": "매출",
+                                "data": series,
+                            }
+                        ],
+                    }
+                ]
+                context_str = "\n".join(context_lines) if context_lines else None
+                answer = await llm_explain_timeseries(series, stats, context=context_str)
+            else:
+                answer = "요청하신 기간에 매출 데이터가 없어 추이를 보여드릴 수 없습니다. 데이터가 수집되면 다시 안내드릴게요."
+                if context_lines:
+                    answer += "\n" + "\n".join(context_lines)
+
+            sources.append(
+                {
+                    "type": "sql",
+                    "name": "public.metrics_daily",
+                    "meta": {
+                        "business_id": biz_id or "unknown",
+                        **sql_range_meta,
+                    },
+                }
+            )
+        else:
+            documents = rag_indexer.vector_search(payload.query)
+            top_k = len(documents)
+            contexts: List[str] = []
+            for doc in documents:
+                metadata = doc.get("metadata") or {}
+                source_name = str(metadata.get("source") or "document")
+                snippet = doc.get("page_content", "")
+                contexts.append(f"출처: {source_name}\n내용:\n{snippet}")
+                meta_payload = {k: str(v) for k, v in metadata.items()}
+                sources.append({"type": "doc", "name": source_name, "meta": meta_payload})
+
+            contexts.extend(context_lines)
+            answer = await _generate_llm_answer(payload.query, contexts or None)
+
+            if biz_id:
+                sources.append(
+                    {
+                        "type": "sql",
+                        "name": "public.metrics_daily",
+                        "meta": {"suggested_range": "최근 30일", "business_id": biz_id},
+                    }
+                )
+
+        if biz_id:
+            conversation_service.log_message(
+                business_id=biz_id,
+                role="assistant",
+                message=answer,
             )
 
+        sources.extend(supplemental_sources)
+
+        latency_ms = round((time.perf_counter() - start_ts) * 1000, 2)
+        log_payload = {
+            "event": "rag_query",
+            "router_decision": router_decision,
+            "top_k": top_k,
+            "sql_range": sql_range_meta,
+            "latency_ms": latency_ms,
+            "biz_id_hash": hashed_biz,
+            "error_code": error_code,
+        }
+        logger.info(json.dumps(log_payload, ensure_ascii=False))
+
         return models.RagQueryResponse(
-            response=final_result["response"], sources=final_result["sources"]
+            answer=answer,
+            sources=[models.RagSource(**source) for source in sources],
+            charts=[models.ChartPayload(**chart) for chart in charts],
+            calculations=calculations,
         )
-    except Exception as e:
-        print(f"Error during chat query: {e}")
-        raise HTTPException(
-            status_code=500, detail="Error processing your query in the chat pipeline."
+    except Exception as error:
+        error_code = "rag_failure"
+        latency_ms = round((time.perf_counter() - start_ts) * 1000, 2)
+        log_payload = {
+            "event": "rag_query",
+            "router_decision": router_decision,
+            "top_k": top_k,
+            "sql_range": sql_range_meta,
+            "latency_ms": latency_ms,
+            "biz_id_hash": hashed_biz,
+            "error_code": error_code,
+        }
+        logger.error(json.dumps(log_payload, ensure_ascii=False))
+        raise HTTPException(status_code=500, detail="Error processing your query in the chat pipeline.") from error
+
+
+@app.post("/rag/index", response_model=RAGIndexResponse, tags=["AI"])
+def rebuild_index(request: RAGIndexRequest):
+    docs_dir = request.docs_dir or rag_indexer.DEFAULT_DOCS_DIR
+    persist_dir = request.persist_dir or rag_indexer.DEFAULT_PERSIST_DIR
+    indexed = rag_indexer.build_index(docs_dir=docs_dir, persist_dir=persist_dir)
+    logger.info(
+        json.dumps(
+            {
+                "event": "rag_index",
+                "docs_dir": docs_dir,
+                "persist_dir": persist_dir,
+                "indexed_chunks": indexed,
+            },
+            ensure_ascii=False,
         )
+    )
+    return RAGIndexResponse(indexed_chunks=indexed, persist_directory=persist_dir)
+
+
+@app.get("/metrics/timeseries", response_model=models.RagQueryResponse, tags=["Metrics"])
+async def metrics_timeseries(
+    business_id: str,
+    from_: Optional[str] = Query(None, alias="from"),
+    to_: Optional[str] = Query(None, alias="to"),
+):
+    date_from = _parse_iso_date(from_)
+    date_to = _parse_iso_date(to_)
+    start_date, end_date = _resolve_range(date_from, date_to)
+    series, stats = fetch_timeseries(business_id, start_date, end_date)
+
+    if series:
+        answer = await llm_explain_timeseries(series, stats)
+        charts = [
+            {
+                "type": "timeseries",
+                "series": [
+                    {
+                        "name": "매출",
+                        "data": series,
+                    }
+                ],
+            }
+        ]
+    else:
+        answer = "요청 기간에 매출 데이터가 없습니다. 기간을 다시 지정하거나 내일 다시 시도해주세요."
+        charts = []
+
+    sources = [
+        {
+            "type": "sql",
+            "name": "public.metrics_daily",
+            "meta": {
+                "business_id": business_id,
+                "from": start_date.isoformat(),
+                "to": end_date.isoformat(),
+            },
+        }
+    ]
+
+    return models.RagQueryResponse(
+        answer=answer,
+        sources=[models.RagSource(**source) for source in sources],
+        charts=[models.ChartPayload(**chart) for chart in charts],
+        calculations=_format_calculations(stats),
+    )
+
+
+@app.get("/chat/history", response_model=models.ChatHistoryResponse, tags=["Chat"])
+async def chat_history(business_id: str, limit: int = Query(50, ge=1, le=200)):
+    """Return recent chat messages for the specified business."""
+    items = conversation_service.list_messages(business_id, limit)
+    return {"items": items}
 
 
 @app.get("/metrics/{business_id}/summary", response_model=MetricsSummaryResponse, tags=["Metrics"])
@@ -342,6 +626,12 @@ async def policy_applications(business_id: str):
     return {"workflows": list_policy_workflows(business_id)}
 
 
+@app.get("/policy/products", response_model=models.PolicyProductsResponse, tags=["Policy"])
+async def policy_products(group_name: str | None = Query(None)):
+    groups = list_policy_products(group_name)
+    return {"groups": groups}
+
+
 @app.post("/business/setup", tags=["Business"])
 async def business_setup(payload: BusinessSetupRequest):
     try:
@@ -360,7 +650,7 @@ async def business_setup(payload: BusinessSetupRequest):
 async def websocket_endpoint(websocket: WebSocket):
     """Initiates a WebSocket connection for real-time chat streaming."""
     await websocket.accept()
-    print("WebSocket connection established.")
+    logger.info(json.dumps({"event": "ws_open"}, ensure_ascii=False))
 
     try:
         while True:
@@ -374,34 +664,37 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 continue
 
-            print(f"Received query via WebSocket: {query}")
-
-            # Determine business_id from WS query param or message payload
             biz_id = websocket.query_params.get("business_id") or payload.get("business_id")
-            
-            extra_context = _build_business_context(biz_id)
+            logger.info(
+                json.dumps(
+                    {"event": "ws_query", "biz_id_hash": _hash_business_id(biz_id), "query": query[:50]},
+                    ensure_ascii=False,
+                )
+            )
+            request_model = models.RagQueryRequest(
+                query=query,
+                business_id=biz_id,
+                date_from=payload.get("date_from"),
+                date_to=payload.get("date_to"),
+            )
 
-            async for result in rag_service.stream_chat_response(
-                query,
-                extra_context=extra_context,
-            ):
-                if result["type"] == "chunk":
-                    await websocket.send_json(
-                        {"type": "chunk", "content": result["content"]}
-                    )
-                elif result["type"] == "final":
-                    await websocket.send_json(
-                        {
-                            "type": "final",
-                            "response": result["response"],
-                            "sources": [s.dict() for s in result["sources"]],
-                        }
-                    )
+            try:
+                response = await rag_query(request_model, business_id=biz_id)
+                await websocket.send_json(
+                    {
+                        "type": "final",
+                        "payload": response.dict(),
+                    }
+                )
+            except HTTPException as http_error:
+                await websocket.send_json(
+                    {"type": "error", "detail": http_error.detail}
+                )
 
     except WebSocketDisconnect:
-        print("Client disconnected")
+        logger.info(json.dumps({"event": "ws_disconnect"}, ensure_ascii=False))
     except Exception as e:
-        print(f"WebSocket Error: {e}")
+        logger.error(f"WebSocket Error: {e}")
         try:
             await websocket.send_json({"type": "error", "detail": str(e)})
         except RuntimeError:
@@ -409,7 +702,7 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         if websocket.client_state.name != "DISCONNECTED":
             await websocket.close()
-        print("WebSocket connection closed.")
+        logger.info(json.dumps({"event": "ws_closed"}, ensure_ascii=False))
 
 
 @app.get("/alerts/sse")
@@ -426,7 +719,7 @@ async def sse_alerts():
                 i += 1
                 yield f"data: {json.dumps({'id': f'alert-{i}', 'message': f'This is alert number {i}'})}" + "\n\n"
         except asyncio.CancelledError:
-            print("SSE connection closed")
+            logger.info(json.dumps({"event": "sse_closed"}, ensure_ascii=False))
             raise
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

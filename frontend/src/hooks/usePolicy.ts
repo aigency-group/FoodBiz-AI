@@ -26,10 +26,30 @@ type PolicyWorkflow = {
   product: Record<string, any>;
 };
 
+export type PolicyProduct = {
+  id: string;
+  name: string;
+  group_name: string;
+  limit_amount?: string;
+  interest_rate?: string;
+  term?: string;
+  eligibility?: string;
+  application_method?: string;
+  documents?: string;
+  features: string[];
+};
+
+export type PolicyProductGroup = {
+  group_name: string;
+  products: PolicyProduct[];
+};
+
 export function usePolicyData() {
   const { currentUser } = useAuth();
   const [recommendations, setRecommendations] = useState<PolicyRecommendation[]>([]);
   const [workflows, setWorkflows] = useState<PolicyWorkflow[]>([]);
+  const [productGroups, setProductGroups] = useState<PolicyProductGroup[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
 
   useEffect(() => {
     const businessId = currentUser?.business_id;
@@ -65,5 +85,28 @@ export function usePolicyData() {
     load();
   }, [currentUser?.business_id]);
 
-  return { recommendations, workflows };
+  useEffect(() => {
+    const loadProducts = async () => {
+      setProductsLoading(true);
+      try {
+        const response = await fetch(`${API_URL}/policy/products`);
+        if (response.ok) {
+          const data = await response.json();
+          setProductGroups(data.groups || []);
+        } else {
+          console.warn('정책 상품 정보를 불러오지 못했습니다.', response.statusText);
+          setProductGroups([]);
+        }
+      } catch (error) {
+        console.error('Failed to load policy products', error);
+        setProductGroups([]);
+      } finally {
+        setProductsLoading(false);
+      }
+    };
+
+    loadProducts();
+  }, []);
+
+  return { recommendations, workflows, productGroups, productsLoading };
 }

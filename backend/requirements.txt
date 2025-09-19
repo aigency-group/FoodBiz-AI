@@ -8,6 +8,8 @@ langchain
 langchain-openai
 langchain-community
 unstructured[md]
+chromadb
+pypdf
 
 # Supabase & Auth
 supabase

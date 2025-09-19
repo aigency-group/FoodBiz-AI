@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .supabase_client import supabase
 
@@ -65,3 +65,50 @@ def list_policy_workflows(business_id: str) -> List[Dict[str, Any]]:
             }
         )
     return workflows
+
+
+def _split_features(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    separators = [";", "\n", "|"]
+    features = [value]
+    for sep in separators:
+        if sep in value:
+            features = [item.strip() for item in value.split(sep)]
+            break
+    return [item for item in (f.strip() for f in features) if item]
+
+
+def list_policy_products(group_name: str | None = None) -> List[Dict[str, Any]]:
+    query = supabase.table("policy_products").select(
+        "id, name, group_name, limit_amount, interest_rate, term, eligibility, documents, application_method"
+    )
+    if group_name:
+        query = query.eq("group_name", group_name)
+    response = query.order("group_name", desc=False).execute()
+    rows = response.data or []
+
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        group = row.get("group_name") or "기타"
+        features = _split_features(row.get("documents"))
+        if not features:
+            features = _split_features(row.get("application_method"))
+        product_payload = {
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "group_name": group,
+            "limit_amount": row.get("limit_amount"),
+            "interest_rate": row.get("interest_rate"),
+            "term": row.get("term"),
+            "eligibility": row.get("eligibility"),
+            "application_method": row.get("application_method"),
+            "features": features,
+            "documents": row.get("documents"),
+        }
+        grouped.setdefault(group, []).append(product_payload)
+
+    return [
+        {"group_name": group, "products": products}
+        for group, products in grouped.items()
+    ]

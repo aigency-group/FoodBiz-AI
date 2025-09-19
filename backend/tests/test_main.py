@@ -28,7 +28,7 @@ def _run(coro):
 def test_stream_chat_response_yields_chunks():
     chunks = [SimpleNamespace(content="Hello"), SimpleNamespace(content=" World")]
 
-    with patch("services.rag_service._build_chat_model", return_value=DummyLLM(chunks)):
+    with patch("services.rag_service.build_chat_model", return_value=DummyLLM(chunks)):
         async def _collect():
             collected = []
             async for item in rag_service.stream_chat_response("hi"):
@@ -56,7 +56,7 @@ def test_stream_chat_response_uses_fallback_on_error():
         async def ainvoke(self, _messages):
             return SimpleNamespace(content="fallback text")
 
-    with patch("services.rag_service._build_chat_model", return_value=FailingLLM()):
+    with patch("services.rag_service.build_chat_model", return_value=FailingLLM()):
         async def _collect():
             collected = []
             async for item in rag_service.stream_chat_response("question"):
@@ -73,7 +73,7 @@ def test_stream_chat_response_uses_fallback_on_error():
 def test_stream_chat_response_handles_empty_generation():
     silent_llm = DummyLLM([])
 
-    with patch("services.rag_service._build_chat_model", return_value=silent_llm), \
+    with patch("services.rag_service.build_chat_model", return_value=silent_llm), \
         patch("services.rag_service._generate_fallback_response", new=AsyncMock(return_value="empty")):
         async def _collect():
             collected = []

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useWebSocket, ReadyState } from '../hooks/useWebSocket';
 import { Send, MessageSquare, X } from 'lucide-react';
@@ -7,10 +7,16 @@ import { Send, MessageSquare, X } from 'lucide-react';
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const WS_URL = API_URL.replace(/^http/, 'ws');
 
+interface HybridSource {
+  type: 'sql' | 'doc';
+  name: string;
+  meta?: Record<string, any>;
+}
+
 interface Message {
   sender: 'user' | 'bot';
   text: string;
-  sources?: any[];
+  sources?: HybridSource[];
 }
 
 export const ChatWidget: React.FC = () => {
@@ -26,38 +32,47 @@ export const ChatWidget: React.FC = () => {
 
   useEffect(() => {
     if (lastMessage) {
-        setMessages(prevMessages => {
-            const last = prevMessages[prevMessages.length - 1];
-            if (lastMessage.type === 'chunk' && last && last.sender === 'bot' && lastMessage.content) {
-                // Append chunk to the last bot message
-                last.text += lastMessage.content;
-                return [...prevMessages.slice(0, -1), last];
-            } else if (lastMessage.type === 'final' && lastMessage.response) {
-                // Replace the last message (which was streaming) with the final one
-                const finalMessage: Message = {
-                    sender: 'bot',
-                    text: lastMessage.response,
-                    sources: lastMessage.sources || [],
-                };
-                // Check if the last message was a bot message to replace it
-                if(last && last.sender === 'bot') {
-                    return [...prevMessages.slice(0, -1), finalMessage];
-                } else {
-                    return [...prevMessages, finalMessage];
-                }
-            } else if (lastMessage.type === 'chunk' && lastMessage.content) {
-                // This is the first chunk
-                const newBotMessage: Message = { sender: 'bot', text: lastMessage.content };
-                return [...prevMessages, newBotMessage];
-            }
-            return prevMessages;
-        });
+      if (lastMessage.type === 'error') {
+        setMessages(prev => [
+          ...prev,
+          { sender: 'bot', text: lastMessage.detail || '오류가 발생했습니다. 다시 시도해주세요.' },
+        ]);
+      }
+
+      if (lastMessage.type === 'final') {
+        const payload = lastMessage.payload || {
+          answer: lastMessage.response,
+          sources: lastMessage.sources,
+        };
+        const finalMessage: Message = {
+          sender: 'bot',
+          text: payload.answer || '답변을 받지 못했습니다.',
+          sources: payload.sources || [],
+        };
+        setMessages(prev => [...prev, finalMessage]);
+      }
     }
   }, [lastMessage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const renderSources = useCallback((sources?: HybridSource[]) => {
+    if (!sources?.length) return null;
+    return (
+      <div className="sources">
+        <strong>Sources</strong>
+        <ul>
+          {sources.map((source, i) => (
+            <li key={i}>
+              [{source.type === 'sql' ? '데이터' : '문서'}] {source.name}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }, []);
 
   const handleSend = () => {
     if (input.trim() && readyState === ReadyState.OPEN) {
@@ -86,16 +101,7 @@ export const ChatWidget: React.FC = () => {
         {messages.map((msg, index) => (
           <div key={index} className={`message ${msg.sender}`}>
             <p>{msg.text}</p>
-            {msg.sources && msg.sources.length > 0 && (
-              <div className="sources">
-                <strong>Sources:</strong>
-                <ul>
-                  {msg.sources.map((source, i) => (
-                    <li key={i}>{source.source_name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {renderSources(msg.sources)}
           </div>
         ))}
         <div ref={messagesEndRef} />
