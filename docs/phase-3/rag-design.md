@@ -30,25 +30,32 @@ Vector store: Chroma (disk persistence)
 ```
 `POST /rag/index` rebuilds the index. Each Document chunk stores `source` 경로와 `uploaded_at` ISO timestamp.
 
-## 3. Vector Retrieval & Generation
-1. `vector_search(query, top_k)` loads the persisted Chroma store.
-2. 상위 k개의 문서 chunk 내용을 컨텍스트로 구성.
-3. `ChatOpenAI`에 시스템 메시지 + 컨텍스트 전달 → 한국어 해설 생성.
-4. 응답에는 문서 출처(`type: doc`)와 메타데이터가 포함됩니다.
+## 3. Context Builder
+- `build_context(query, business_id, date_from, date_to)`가 한 번의 호출로 아래 데이터를 수집합니다.
+  1. `metrics_daily` 시계열 + 통계
+  2. `reviews` 요약 + 최근 3건
+  3. `policy_products` 추천/검색 Top-N
+  4. 벡터 문서 상위 K개 (`rag_indexer.vector_search`)
+- 반환 결과는 `contexts`, `sources`, `metrics`, `reviews`, `policies`, `documents`, `meta` 구조이며, RAG 파이프라인은 이를 그대로 재사용합니다.
 
-## 4. SQL Timeseries Path
-1. `fetch_timeseries(business_id, from, to)`가 `public.metrics_daily`에서 범위 데이터를 조회합니다.
-2. 결과를 `{x: ISO date, y: net_sales}` 시리즈로 정규화하고 7일 이동평균/증감률을 계산합니다.
-3. 추가로 `public.reviews` 요약과 `policy_products` 추천 목록을 수집하여 LLM 컨텍스트에 포함합니다.
-4. `llm_explain_timeseries`가 수치형 데이터와 부가 정보를 한국어로 요약합니다 (LLM 실패 시 규칙 기반 문구).
-5. 차트(`type: timeseries`), 계산 결과, 관련 SQL 출처가 응답에 포함됩니다.
+## 4. Vector Retrieval & Generation
+1. Context builder가 제공한 문서 컨텍스트(`bundle.documents`)를 기반으로 `ChatOpenAI` 호출.
+2. 시스템 프롬프트는 `app/prompts/system_prompt.py` 템플릿에 `bundle.meta`를 주입하여 동적으로 생성.
+3. 최종 답변은 한국어로 요약되고, 문서 출처(`type: doc`)가 함께 반환됩니다.
 
-## 5. Unified Response Schema
+## 5. SQL Timeseries Path
+1. Context builder가 전달한 `metrics.series`와 `stats`를 사용해 차트+계산을 구성합니다.
+2. `llm_explain_timeseries`가 수치형 데이터를 요약하며, 리뷰/정책 컨텍스트 문자열도 함께 제공됩니다.
+3. 차트(`type: timeseries`), 계산 결과, SQL 출처(`metrics_daily`, `reviews`, `policy_products`)를 응답에 포함합니다.
+
+## 6. Unified Response Schema
 ```jsonc
 {
   "answer": "…LLM 해설…",
   "sources": [
     { "type": "sql", "name": "public.metrics_daily", "meta": {"from": "2025-01-01", "to": "2025-01-30"} },
+    { "type": "sql", "name": "public.reviews", "meta": {"review_count": "42", "average_rating": "4.3"} },
+    { "type": "sql", "name": "public.policy_products", "meta": {"top_products": "우리 사잇돌 중금리대출, 위비 SOHO 모바일 신용대출"} },
     { "type": "doc", "name": "docs/policies/eligibility.md", "meta": {"uploaded_at": "2025-02-01T02:13:00"} }
   ],
   "charts": [
@@ -59,11 +66,11 @@ Vector store: Chroma (disk persistence)
 ```
 모든 경로에서 동일한 스키마가 유지되므로 프런트엔드와 WebSocket은 단일 렌더러로 처리할 수 있습니다.
 
-## 6. Logging & Monitoring
+## 7. Logging & Monitoring
 - JSON 로그 필드: `router_decision`, `top_k`, `sql_range`, `latency_ms`, `biz_id_hash`, `error_code`.
 - WebSocket 연결/해제 이벤트, SSE 종료 이벤트도 구조화 로그로 기록합니다.
 - 로그에는 PII와 원문 카드번호 등은 포함되지 않습니다 (business id는 SHA-256 hash 12자 사용).
 
-## 7. Fallbacks
+## 8. Fallbacks
 - 벡터 검색에서 문서를 찾지 못하면 LLM이 일반 답변을 제공하고 SQL 제안 메타(`suggested_range`)를 첨부합니다.
 - SQL 경로에서 데이터가 비어 있으면 차트는 생략되고 안내 문구가 반환됩니다.
