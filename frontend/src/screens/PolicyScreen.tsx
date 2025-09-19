@@ -189,10 +189,13 @@ const PolicyScreenComponent: React.FC = () => {
       style={{
         flex: 1,
         overflowY: 'auto',
-        padding: 16,
+        padding: '16px 12px',
         display: 'flex',
         flexDirection: 'column',
         gap: 24,
+        maxWidth: '700px',
+        margin: '0 auto',
+        width: '100%',
       }}
     >
       <section style={{ display: 'grid', gap: 12 }}>
@@ -209,7 +212,7 @@ const PolicyScreenComponent: React.FC = () => {
                 boxShadow: '0 12px 24px rgba(15,23,42,0.08)',
               }}
             >
-              <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
                 <div
                   style={{
                     width: 48,
@@ -223,13 +226,28 @@ const PolicyScreenComponent: React.FC = () => {
                 >
                   {React.createElement(card.icon, { size: 24, color: '#0055A0' })}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <div>
-                      <h3 style={{ fontSize: 16, fontWeight: 700 }}>{card.title}</h3>
-                      <p style={{ fontSize: 12, color: 'var(--app-text-secondary)' }}>{card.description}</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>{card.title}</h3>
+                      <p style={{ 
+                        fontSize: 12, 
+                        color: 'var(--app-text-secondary)',
+                        wordBreak: 'keep-all',
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        whiteSpace: 'normal',
+                        lineHeight: 1.5,
+                        margin: 0
+                      }}>{card.description}</p>
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#0055A0' }}>{card.limit}</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: '#0055A0',
+                      flexShrink: 0,
+                      textAlign: 'right'
+                    }}>{card.limit}</span>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {card.badges.map((badge) => (
@@ -258,12 +276,17 @@ const PolicyScreenComponent: React.FC = () => {
               <h3 style={{ fontSize: 16, fontWeight: 700 }}>{groupName}</h3>
               {items.map((item) => (
                 <div key={item.policy_id} style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h4 style={{ fontSize: 15, fontWeight: 700 }}>{item.name}</h4>
-                      <p style={{ fontSize: 12, color: 'var(--app-text-secondary)' }}>{item.limit_amount} · {item.interest_rate}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{item.name}</h4>
+                      <p style={{ fontSize: 12, color: 'var(--app-text-secondary)', margin: 0 }}>{item.limit_amount} · {item.interest_rate}</p>
                     </div>
-                    <span style={{ fontSize: 12, color: '#2563EB' }}>우선순위 {item.priority}</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      color: '#2563EB',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0
+                    }}>우선순위 {item.priority}</span>
                   </div>
                   <p style={{ fontSize: 12, color: '#475467', lineHeight: 1.5 }}>{item.rationale}</p>
                   <div style={{ fontSize: 11, color: '#64748B' }}>
@@ -313,14 +336,15 @@ const PolicyScreenComponent: React.FC = () => {
                             background: 'rgba(15,23,42,0.05)',
                             display: 'grid',
                             placeItems: 'center',
+                            flexShrink: 0,
                           }}
                         >
                           <ClipboardList size={20} color="#0F172A" />
                         </div>
-                        <div style={{ flex: 1, display: 'grid', gap: 4 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                            <div>
-                              <h4 style={{ fontSize: 15, fontWeight: 700 }}>{item.name}</h4>
+                        <div style={{ flex: 1, display: 'grid', gap: 4, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{item.name}</h4>
                               <span style={{ fontSize: 12, color: 'var(--app-text-secondary)' }}>{item.limit} · {item.rate}</span>
                             </div>
                             <span
@@ -332,6 +356,7 @@ const PolicyScreenComponent: React.FC = () => {
                                 borderRadius: 999,
                                 padding: '4px 10px',
                                 whiteSpace: 'nowrap',
+                                flexShrink: 0,
                               }}
                             >
                               {item.status}
@@ -364,9 +389,9 @@ const PolicyScreenComponent: React.FC = () => {
               </div>
               {workflows.map((workflow) => (
                 <Card key={workflow.policy_id} style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h4 style={{ fontSize: 15, fontWeight: 700 }}>{workflow.product?.name}</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{workflow.product?.name}</h4>
                       <span style={{ fontSize: 12, color: 'var(--app-text-secondary)' }}>{workflow.product?.limit_amount} · {workflow.product?.interest_rate}</span>
                     </div>
                     <span
@@ -377,6 +402,8 @@ const PolicyScreenComponent: React.FC = () => {
                         background: `${workflow.status_color}22`,
                         borderRadius: 999,
                         padding: '4px 10px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
                       }}
                     >
                       {workflow.status}

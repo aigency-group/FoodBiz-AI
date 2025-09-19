@@ -76,7 +76,15 @@ const SuggestionRow: React.FC<{ icon?: React.ReactNode; title: string; descripti
       {icon}
       {title}
     </div>
-    <p style={{ fontSize: 11, color: '#42526E', lineHeight: 1.4 }}>{description}</p>
+    <p style={{ 
+      fontSize: 11, 
+      color: '#42526E', 
+      lineHeight: 1.4,
+      wordBreak: 'keep-all',
+      wordWrap: 'break-word',
+      overflowWrap: 'break-word',
+      whiteSpace: 'normal'
+    }}>{description}</p>
   </div>
 );
 
@@ -123,6 +131,10 @@ const Bubble: React.FC<{ from: 'bot' | 'me'; children?: React.ReactNode }> = ({ 
         fontSize: 13,
         boxShadow: '0 3px 12px rgba(11,44,94,0.08)',
         whiteSpace: 'pre-wrap',
+        wordBreak: 'keep-all',
+        wordWrap: 'break-word',
+        overflowWrap: 'break-word',
+        lineHeight: 1.5,
       }}
     >
       {children}
@@ -162,15 +174,14 @@ export function ChatScreen() {
   }, [currentUser, metricsSummary, reviewSummary]);
 
   const welcomeScript = useMemo(() => {
-    const owner = currentUser?.owner_name ? `${currentUser.owner_name} 사장님` : '안녕하세요';
-    const prefix = `${owner}, 오늘 지표를 간단히 점검해보죠.`;
+    const owner = currentUser?.owner_name ? `${currentUser.owner_name} 사장님` : '사장님';
     if (signalTone === 'green') {
-      return `${prefix} 흐름이 안정적이니 고객 관리와 성장 아이디어에 집중해 보세요.`;
+      return `안녕하세요, ${owner}! 초록 신호예요. 오늘은 성장 코칭으로 고객 확보 아이디어를 준비했습니다.`;
     }
     if (signalTone === 'amber') {
-      return `${prefix} 매출과 리뷰를 함께 보며 개선할 부분을 찾아보겠습니다.`;
+      return `안녕하세요, ${owner}. 주황 신호입니다. 리뷰 키워드 기반 개선 팁을 함께 점검해볼까요?`;
     }
-    return `${prefix} 자금과 리뷰 대응이 우선입니다. 필요한 조치를 하나씩 안내드릴게요.`;
+    return `안녕하세요, ${owner}. 빨강 신호가 켜졌어요. 정책자금과 긴급 대응 플랜부터 정리해드릴게요.`;
   }, [currentUser?.owner_name, signalTone]);
 
   useEffect(() => {
@@ -249,11 +260,11 @@ export function ChatScreen() {
     ? reviewSummary.negative_count / reviewSummary.review_count
     : 0;
 
-  const signalLabel = signalTone === 'green' ? '안정 구간' : signalTone === 'amber' ? '점검 필요' : '주의 필요';
+  const signalLabel = signalTone === 'green' ? '성장 코칭 준비 완료' : signalTone === 'amber' ? '개선 플랜 점검' : '긴급 대응 필요';
   const signalColor = signalTone === 'green' ? '#2AA5A0' : signalTone === 'amber' ? '#F5A45A' : '#C63A3A';
 
   return (
-    <div className="h-full flex flex-col" style={{ background: 'var(--app-background)' }}>
+    <div className="h-full flex flex-col" style={{ background: '#FFFFFF' }}>
       <div
         ref={listRef}
         className="flex-1"
@@ -331,7 +342,13 @@ export function ChatScreen() {
                     style={{ fontSize: 10, color: '#42526E', marginTop: 4, padding: 6, background: 'rgba(230,238,250,0.6)', borderRadius: 6 }}
                   >
                     <p><strong>{s.source_name}</strong></p>
-                    <p>...{s.snippet}...</p>
+                    <p style={{
+                      wordBreak: 'keep-all',
+                      wordWrap: 'break-word',
+                      overflowWrap: 'break-word',
+                      whiteSpace: 'normal',
+                      lineHeight: 1.4
+                    }}>...{s.snippet}...</p>
                   </div>
                 ))}
               </div>

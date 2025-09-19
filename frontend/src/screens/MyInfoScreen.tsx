@@ -34,7 +34,7 @@ const ProfileDisplay = () => {
     { icon: <Phone size={18} />, label: "전화번호", value: currentUser.phone_number },
   ];
 
-  const SyncRow = ({ icon, title, description, isConnected, onConnect }) => (
+  const SyncRow = ({ icon, title, description, isConnected, onToggle }) => (
     <div
       style={{
         display: 'flex',
@@ -54,158 +54,249 @@ const ProfileDisplay = () => {
           <p style={{ fontSize: 11, color: palette.subtext }}>{description}</p>
         </div>
       </div>
-      {isConnected ? (
-        <Badge
-          variant="secondary"
-          style={{
-            background: 'rgba(42,165,160,0.12)',
-            color: palette.teal,
-            borderColor: 'rgba(42,165,160,0.3)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <CheckCircle2 className="w-4 h-4" /> 연동됨
-        </Badge>
-      ) : (
-        <Button variant="outline" size="sm" onClick={onConnect} className="border-slate-200 text-blue-600">
-          연동하기
-        </Button>
-      )}
+      <button
+        onClick={onToggle}
+        style={{
+          padding: '6px 12px',
+          borderRadius: 12,
+          border: isConnected ? '1px solid rgba(42,165,160,0.3)' : '1px solid rgba(30,79,158,0.2)',
+          background: isConnected ? 'rgba(42,165,160,0.12)' : 'rgba(255,255,255,0.9)',
+          color: isConnected ? palette.teal : '#1E4F9E',
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          transition: 'all 0.2s ease',
+          whiteSpace: 'nowrap',
+          minWidth: 'fit-content',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = isConnected ? 'rgba(42,165,160,0.2)' : 'rgba(30,79,158,0.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = isConnected ? 'rgba(42,165,160,0.12)' : 'rgba(255,255,255,0.9)';
+        }}
+      >
+        {isConnected ? (
+          <>
+            <CheckCircle2 className="w-4 h-4" /> 연동됨
+          </>
+        ) : (
+          '연동하기'
+        )}
+      </button>
     </div>
   );
 
   return (
-    <div className="space-y-5">
+    <div style={{ display: 'grid', gap: 20 }}>
+      {/* Profile Card */}
       <div
-        className="relative overflow-hidden rounded-3xl shadow-xl"
         style={{
-          background: 'linear-gradient(140deg, rgba(30,79,158,0.92), rgba(111,173,232,0.72))',
-          color: '#fff',
+          position: 'relative',
+          padding: 24,
+          display: 'grid',
+          gap: 20,
+          borderRadius: 20,
+          background: 'linear-gradient(135deg, #E7F2FF, #F0F8FF)',
+          border: '1px solid rgba(174,197,232,0.2)',
+          boxShadow: '0 8px 24px rgba(30,79,158,0.08)',
         }}
       >
-        <div className="absolute inset-0" style={{ background: 'radial-gradient(circle at top, rgba(255,255,255,0.25), transparent 55%)' }} />
-        <div className="relative flex flex-col gap-5 p-6">
-          <div className="flex items-center gap-4">
-            <Avatar className="w-16 h-16 border-2 border-white/70 shadow-lg">
-              <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.store_name}`} alt={currentUser.store_name} />
-              <AvatarFallback className="text-xl">{(currentUser.store_name || ' ')[0]}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <p className="text-sm opacity-90">사장님 프로필</p>
-              <h2 className="text-2xl font-bold">{currentUser.store_name}</h2>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge className="border-white/40 bg-white/20 text-white">
-                  {currentUser.owner_name} 사장님
-                </Badge>
-                {currentUser.industry && <Badge className="border-white/30 bg-white/15 text-white">{currentUser.industry}</Badge>}
-              </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Avatar className="w-16 h-16 border-2 border-white/70 shadow-lg">
+            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.store_name}`} alt={currentUser.store_name} />
+            <AvatarFallback className="text-xl">{(currentUser.store_name || ' ')[0]}</AvatarFallback>
+          </Avatar>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 14, color: '#1E4F9E', fontWeight: 600, margin: 0 }}>사장님 프로필</p>
+            <h2 style={{ fontSize: 24, fontWeight: 800, color: '#123B70', margin: '4px 0 8px 0' }}>{currentUser.store_name}</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 12,
+                padding: '4px 8px',
+                borderRadius: 12,
+                background: 'rgba(30,79,158,0.1)',
+                color: '#1E4F9E',
+                fontWeight: 600,
+              }}>
+                {currentUser.owner_name} 사장님
+              </span>
+              {currentUser.industry && (
+                <span style={{
+                  fontSize: 12,
+                  padding: '4px 8px',
+                  borderRadius: 12,
+                  background: 'rgba(30,79,158,0.1)',
+                  color: '#1E4F9E',
+                  fontWeight: 600,
+                }}>
+                  {currentUser.industry}
+                </span>
+              )}
             </div>
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" onClick={logout}>
-              <LogOut className="w-5 h-5" />
-            </Button>
           </div>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div style={{ background: 'rgba(255,255,255,0.18)', borderRadius: 16, padding: '12px 16px' }}>
-              <p className="opacity-90">사업장 코드</p>
-              <p className="text-lg font-semibold">{currentUser.business_code || '연동 준비'}</p>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.18)', borderRadius: 16, padding: '12px 16px' }}>
-              <p className="opacity-90">연결 상태</p>
-              <p className="text-lg font-semibold">{syncStatus.card ? '정상' : '확인 필요'}</p>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.18)', borderRadius: 16, padding: '12px 16px' }}>
-              <p className="opacity-90">최근 로그인</p>
-              <p className="text-lg font-semibold">오늘</p>
-            </div>
+          <Button variant="ghost" size="icon" style={{ color: '#1E4F9E' }} onClick={logout}>
+            <LogOut className="w-5 h-5" />
+          </Button>
+        </div>
+        
+        {/* Stats Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          <div style={{ 
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.6)',
+            border: '1px solid rgba(30,79,158,0.08)',
+            textAlign: 'center'
+          }}>
+            <p style={{ fontSize: 11, color: '#1E4F9E', fontWeight: 500, margin: '0 0 2px 0' }}>사업장 코드</p>
+            <p style={{ fontSize: 13, fontWeight: 600, color: '#123B70', margin: 0 }}>{currentUser.business_code || '연동 준비'}</p>
+          </div>
+          <div style={{ 
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.6)',
+            border: '1px solid rgba(30,79,158,0.08)',
+            textAlign: 'center'
+          }}>
+            <p style={{ fontSize: 11, color: '#1E4F9E', fontWeight: 500, margin: '0 0 2px 0' }}>연결 상태</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#123B70', margin: 0 }}>{syncStatus.card ? '정상' : '확인 필요'}</p>
+          </div>
+          <div style={{ 
+            padding: '12px 16px',
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.6)',
+            border: '1px solid rgba(30,79,158,0.08)',
+            textAlign: 'center'
+          }}>
+            <p style={{ fontSize: 11, color: '#1E4F9E', fontWeight: 500, margin: '0 0 2px 0' }}>최근 로그인</p>
+            <p style={{ fontSize: 14, fontWeight: 600, color: '#123B70', margin: 0 }}>오늘</p>
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="info" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 p-1 h-auto rounded-xl" style={{ background: 'rgba(174,197,232,0.3)' }}>
-          <TabsTrigger value="info" className="rounded-lg text-sm font-semibold text-slate-600 data-[state=active]:bg-white data-[state=active]:text-blue-600">가게 정보</TabsTrigger>
-          <TabsTrigger value="sync" className="rounded-lg text-sm font-semibold text-slate-600 data-[state=active]:bg-white data-[state=active]:text-blue-600">데이터 연동</TabsTrigger>
-        </TabsList>
-        <TabsContent value="info" className="mt-4">
-          <Card className="shadow-md border border-blue-100" style={{ background: '#FFFFFF' }}>
-            <CardHeader className="pb-2">
-              <CardTitle style={{ color: palette.text }}>기본 정보</CardTitle>
-              <CardDescription style={{ color: palette.subtext }}>SIGNAL이 분석에 활용하는 사업장 정보입니다.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              {infoItems.map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    borderRadius: 18,
-                    background: palette.background,
-                    padding: '12px 16px',
-                    border: '1px solid rgba(174,197,232,0.4)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: palette.subtext }}>
-                    <div style={{ color: palette.primary }}>{item.icon}</div>
-                    <span>{item.label}</span>
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: palette.text, maxWidth: '55%', textAlign: 'right' }}>
-                    {item.value || '등록되지 않았습니다.'}
-                  </span>
+
+      {/* Tab Content */}
+      <div style={{ display: 'grid', gap: 16 }}>
+        {/* 가게 정보 섹션 */}
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#123B70' }}>기본 정보</h3>
+            <span style={{ fontSize: 12, color: '#42526E' }}>SIGNAL이 분석에 활용하는 사업장 정보입니다.</span>
+          </div>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {infoItems.map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderRadius: 18,
+                  background: 'linear-gradient(135deg, rgba(231,242,255,0.9), rgba(214,236,255,0.55))',
+                  padding: '16px 20px',
+                  border: '1px solid rgba(174,197,232,0.45)',
+                  boxShadow: '0 4px 12px rgba(30,79,158,0.06)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ color: '#1E4F9E' }}>{item.icon}</div>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#123B70' }}>{item.label}</span>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-          <Button variant="outline" className="w-full mt-4 bg-white shadow-sm">가게 정보 수정</Button>
-        </TabsContent>
-        <TabsContent value="sync" className="mt-4">
-          <Card className="shadow-md border border-blue-100" style={{ background: '#FFFFFF' }}>
-            <CardHeader>
-              <CardTitle style={{ color: palette.text }}>데이터 연동 현황</CardTitle>
-              <CardDescription style={{ color: palette.subtext }}>주요 채널을 연동하면 홈택스 지연이 있어도 최신 데이터를 빠르게 확인할 수 있어요.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <SyncRow
-                icon={<CreditCard size={20} />}
-                title="카드 매출"
-                description="여신금융협회 API를 통해 일별 매출을 수집합니다"
-                isConnected={syncStatus.card}
-                onConnect={() => setSyncStatus((s) => ({ ...s, card: true }))}
-              />
-              <SyncRow
-                icon={<Smartphone size={20} />}
-                title="배달앱 매출"
-                description="배달의민족, 요기요 등 채널을 한 번에 연동합니다"
-                isConnected={syncStatus.delivery}
-                onConnect={() => setSyncStatus((s) => ({ ...s, delivery: true }))}
-              />
-              <SyncRow
-                icon={<Building size={20} />}
-                title="POS/키오스크"
-                description="POS사 실시간 매출을 자동으로 불러옵니다"
-                isConnected={syncStatus.pos}
-                onConnect={() => setSyncStatus((s) => ({ ...s, pos: true }))}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#123B70', maxWidth: '55%', textAlign: 'right' }}>
+                  {item.value || '등록되지 않았습니다.'}
+                </span>
+              </div>
+            ))}
+          </div>
+          <button
+            style={{
+              width: '100%',
+              padding: '12px 20px',
+              borderRadius: 16,
+              background: 'rgba(255,255,255,0.9)',
+              border: '1px solid rgba(30,79,158,0.2)',
+              color: '#1E4F9E',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(30,79,158,0.1)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.9)';
+            }}
+          >
+            가게 정보 수정
+          </button>
+        </div>
+
+        {/* 데이터 연동 섹션 */}
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#123B70' }}>데이터 연동 현황</h3>
+              <span style={{ fontSize: 12, color: '#42526E', marginTop: 4 }}>
+                주요 채널을 연동하면 최신 데이터를 빠르게 확인할 수 있어요.
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <SyncRow
+              icon={<CreditCard size={20} />}
+              title="카드 매출"
+              description="여신금융협회 API를 통해 매출 연동"
+              isConnected={syncStatus.card}
+              onToggle={() => setSyncStatus((s) => ({ ...s, card: !s.card }))}
+            />
+            <SyncRow
+              icon={<Smartphone size={20} />}
+              title="배달앱 매출"
+              description="배달의민족, 요기요 등 채널을 일괄 연동"
+              isConnected={syncStatus.delivery}
+              onToggle={() => setSyncStatus((s) => ({ ...s, delivery: !s.delivery }))}
+            />
+            <SyncRow
+              icon={<Building size={20} />}
+              title="POS/키오스크"
+              description="POS사 실시간 매출 연동"
+              isConnected={syncStatus.pos}
+              onToggle={() => setSyncStatus((s) => ({ ...s, pos: !s.pos }))}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
 export const MyInfoScreen: React.FC = () => {
   return (
-    <div style={{ minHeight: '100vh', background: palette.background, paddingBottom: 80 }}>
-      <div style={{ background: '#FFFFFF', boxShadow: '0 6px 18px rgba(30,79,158,0.08)', borderBottom: '1px solid rgba(174,197,232,0.35)' }}>
-        <div className="px-6 py-4 flex justify-center relative">
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: palette.text }}>내 정보</h1>
-        </div>
-      </div>
-      <main className="p-4">
+    <div
+      className="h-full"
+      style={{
+        background: '#FFFFFF',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+
+      {/* Main Content */}
+      <main
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: 16,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 20,
+        }}
+      >
         <ProfileDisplay />
       </main>
     </div>

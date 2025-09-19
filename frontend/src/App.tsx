@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Suspense, useCallback } from "react";
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, useLocation } from "react-router-dom";
 import { MessageCircle, BarChart2, Landmark, User } from "lucide-react";
 
 import { ThemeRoot } from "./components/layout/ThemeRoot";
@@ -24,81 +25,125 @@ type PageKey = "none" | "metrics" | "marketing" | "reviews";
 
 const TabButton: React.FC<{ active: boolean; label: string; icon: React.ReactNode; onClick: () => void }> =
 ({ active, label, icon, onClick }) => (
-  <button onClick={onClick} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0" }}>
-    <div style={{ padding: 8, borderRadius: 12, background: active ? "var(--app-light-blue)" : "transparent", color: active ? "var(--app-primary)" : "var(--app-text-secondary)" }}>
+  <button 
+    onClick={onClick} 
+    style={{ 
+      flex: 1, 
+      display: "flex", 
+      flexDirection: "column", 
+      alignItems: "center", 
+      padding: "8px 12px",
+      background: 'transparent',
+      border: 'none',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+    }}
+  >
+    <div 
+      style={{ 
+        width: 32,
+        height: 32,
+        borderRadius: active ? '50%' : '8px',
+        background: active ? 'rgba(0,122,255,0.1)' : 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+        color: active ? '#007AFF' : '#8E8E93'
+      }}
+    >
       {icon}
     </div>
-    <span style={{ fontSize: 11, color: active ? "var(--app-primary)" : "var(--app-text-secondary)" }}>{label}</span>
+    <span 
+      style={{ 
+        fontSize: 12, 
+        fontWeight: active ? 600 : 500,
+        color: active ? '#000000' : '#8E8E93',
+        marginTop: 4,
+        transition: 'all 0.2s ease'
+      }}
+    >
+      {label}
+    </span>
   </button>
 );
 
+// ReviewsDetail 래퍼 컴포넌트 (URL 파라미터에서 businessId 추출)
+const ReviewsDetailWrapper: React.FC = () => {
+  const { businessId } = useParams<{ businessId: string }>();
+  const navigate = useNavigate();
+  
+  return (
+    <ReviewsDetail
+      onBack={() => navigate(-1)}
+      businessId={businessId || ""}
+    />
+  );
+};
+
 const MainApp = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [tab, setTab] = useState<TabKey>("chat"); // Default to chat tab after login
   const [page, setPage] = useState<PageKey>("none");
-  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
-  const [pageOriginTab, setPageOriginTab] = useState<TabKey | null>(null);
+  const [, setSelectedBusinessId] = useState<string | null>(null);
 
-  const closeOverlay = useCallback(() => {
-    setPage("none");
-    setSelectedBusinessId(null);
-    if (pageOriginTab) {
-      setTab(pageOriginTab);
-    }
-    setPageOriginTab(null);
-  }, [pageOriginTab]);
-
-  const openPage = useCallback(
-    (nextPage: PageKey, businessId?: string) => {
-      if (nextPage === "none") {
-        closeOverlay();
-        return;
-      }
-
-      if (nextPage === "reviews") {
-        const resolvedBusinessId = businessId ?? currentUser?.business_id ?? null;
-        if (!resolvedBusinessId) {
-          console.warn("리뷰 상세 정보를 열 수 없습니다. businessId가 없습니다.");
-          return;
-        }
-        setSelectedBusinessId(resolvedBusinessId);
-      } else {
-        setSelectedBusinessId(null);
-      }
-
-      setPageOriginTab(tab);
-      setPage(nextPage);
-    },
-    [closeOverlay, currentUser?.business_id, tab]
-  );
-
-  const openReviewDetail = useCallback(
-    (businessId?: string) => {
-      const resolvedBusinessId = businessId ?? currentUser?.business_id ?? null;
-      if (!resolvedBusinessId) {
-        console.warn("리뷰 상세 페이지 이동에 필요한 businessId가 없습니다.");
-        return;
-      }
-      setSelectedBusinessId(resolvedBusinessId);
-      setPageOriginTab(tab);
-      setPage("reviews");
-    },
-    [currentUser?.business_id, tab]
-  );
+  const goTab = useCallback((nextTab: TabKey) => {
+    setTab(nextTab);
+    const path =
+      nextTab === "chat"
+        ? "/chat"
+        : nextTab === "dashboard"
+        ? "/dashboard"
+        : nextTab === "finance"
+        ? "/finance"
+        : "/profile";
+    navigate(path);
+  }, [navigate]);
 
   useEffect(() => {
-    (window as any).__goTab = setTab;
-    (window as any).__goPage = (p: PageKey, businessId?: string) => openPage(p, businessId);
-    (window as any).__openReviewDetail = (businessId?: string) => openReviewDetail(businessId);
-    (window as any).__backPage = () => closeOverlay();
-
-    return () => {
-      delete (window as any).__goTab;
-      delete (window as any).__goPage;
-      delete (window as any).__openReviewDetail;
-      delete (window as any).__backPage;
+    // 전역 함수들을 React Router 네비게이션으로 브리지
+    (window as any).__goTab = goTab;
+    (window as any).__goPage = (p: PageKey, businessId?: string) => {
+      if (p === "reviews") {
+        const targetBusinessId = businessId || currentUser?.business_id;
+        if (targetBusinessId) {
+          navigate(`/reviews/${targetBusinessId}`);
+        } else {
+          navigate('/reviews');
+        }
+      } else {
+        setPage(p);
+      }
     };
-  }, [closeOverlay, openPage, openReviewDetail]);
+    (window as any).__openReviewDetail = (businessId: string) => {
+      navigate(`/reviews/${businessId}`);
+    };
+    (window as any).__backPage = () => {
+      setPage("none");
+      setSelectedBusinessId(null);
+      navigate(-1); // 브라우저 히스토리에서 뒤로 가기
+    };
+  }, [currentUser?.business_id, goTab, navigate]);
+
+  useEffect(() => {
+    const path = location.pathname;
+    let nextTab: TabKey | null = null;
+    if (path === "/" || path.startsWith("/chat")) {
+      nextTab = "chat";
+    } else if (path.startsWith("/dashboard")) {
+      nextTab = "dashboard";
+    } else if (path.startsWith("/finance")) {
+      nextTab = "finance";
+    } else if (path.startsWith("/profile")) {
+      nextTab = "profile";
+    }
+
+    if (nextTab && nextTab !== tab) {
+      setTab(nextTab);
+    }
+  }, [location.pathname, tab]);
 
   if (!currentUser) {
     return (
@@ -120,30 +165,50 @@ const MainApp = () => {
       <div style={{ height: "100%", display: "grid", gridTemplateRows: "1fr 64px" }}>
         <div style={{ overflow: "hidden", position: "relative" }}>
           <Suspense fallback={<div style={{padding: 16}}>로딩 중...</div>}>
-            {tab === "chat" && <ChatScreen />}
-            {tab === "dashboard" && <DashboardScreen />}
-            {tab === "finance" && <FinanceScreen />}
-            {tab === "profile" && <MyInfoScreen />}
-          
-            {page !== "none" && (
+            <Routes>
+              {/* 메인 탭 라우트들 */}
+              <Route path="/" element={
+                tab === "chat" ? <ChatScreen /> :
+                tab === "dashboard" ? <DashboardScreen /> :
+                tab === "finance" ? <FinanceScreen /> :
+                <MyInfoScreen />
+              } />
+              <Route path="/chat" element={<ChatScreen />} />
+              <Route path="/dashboard" element={<DashboardScreen />} />
+              <Route path="/finance" element={<FinanceScreen />} />
+              <Route path="/profile" element={<MyInfoScreen />} />
+              
+              {/* 상세 페이지 라우트들 */}
+              <Route path="/metrics" element={<MetricsDetail onBack={() => navigate(-1)} />} />
+              <Route path="/marketing" element={<MarketingDetail onBack={() => navigate(-1)} />} />
+              <Route path="/reviews" element={<ReviewsDetail onBack={() => navigate(-1)} businessId={currentUser?.business_id || ""} />} />
+              <Route path="/reviews/:businessId" element={<ReviewsDetailWrapper />} />
+            </Routes>
+            
+            {/* 기존 오버레이 방식 (metrics, marketing만) */}
+            {page !== "none" && page !== "reviews" && (
               <div style={{ position: "absolute", inset: 0, background: "#fff", zIndex: 20 }}>
                 {page === "metrics" && <MetricsDetail onBack={(window as any).__backPage} />}
                 {page === "marketing" && <MarketingDetail onBack={(window as any).__backPage} />}
-                {page === "reviews" && selectedBusinessId && (
-                  <ReviewsDetail
-                    onBack={(window as any).__backPage}
-                    businessId={selectedBusinessId}
-                  />
-                )}
               </div>
             )}
           </Suspense>
         </div>
-        <nav className="border-t" style={{ display: "flex", background: "var(--app-white)", borderColor: "#E6E9EE" }}>
-            <TabButton active={tab === "chat"} label="챗봇" icon={<MessageCircle size={18} />} onClick={() => setTab("chat")} />
-            <TabButton active={tab === "dashboard"} label="대시보드" icon={<BarChart2 size={18} />} onClick={() => setTab("dashboard")} />
-            <TabButton active={tab === "finance"} label="금융" icon={<Landmark size={18} />} onClick={() => setTab("finance")} />
-            <TabButton active={tab === "profile"} label="내정보" icon={<User size={18} />} onClick={() => setTab("profile")} />
+        <nav 
+          style={{ 
+            display: "flex", 
+            background: "#FFFFFF", 
+            borderTop: "1px solid rgba(0,0,0,0.1)",
+            padding: "12px 0 20px",
+            borderRadius: "16px 16px 0 0",
+            margin: "0 16px",
+            boxShadow: "0 -2px 8px rgba(0,0,0,0.05)"
+          }}
+        >
+            <TabButton active={tab === "chat"} label="챗봇" icon={<MessageCircle size={18} />} onClick={() => goTab("chat")} />
+            <TabButton active={tab === "dashboard"} label="대시보드" icon={<BarChart2 size={18} />} onClick={() => goTab("dashboard")} />
+            <TabButton active={tab === "finance"} label="금융" icon={<Landmark size={18} />} onClick={() => goTab("finance")} />
+            <TabButton active={tab === "profile"} label="내정보" icon={<User size={18} />} onClick={() => goTab("profile")} />
         </nav>
       </div>
       <ChatWidget />
@@ -155,7 +220,9 @@ function App() {
   return (
     <AuthProvider>
       <ThemeRoot>
-        <MainApp />
+        <Router>
+          <MainApp />
+        </Router>
       </ThemeRoot>
     </AuthProvider>
   );

@@ -11,22 +11,92 @@ export const Alerts: React.FC = () => {
   const { data: alerts } = useEventSource(sseUrl);
 
   return (
-    <div className="alerts-container">
-      <button onClick={() => setIsOpen(!isOpen)} className="alerts-bell-button">
-        <Bell size={24} />
-        {alerts.length > 0 && <span className="alerts-dot"></span>}
+    <div style={{ position: 'relative' }}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        style={{
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '8px',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        <Bell size={20} color="#8E8E93" />
+        {alerts.length > 0 && (
+          <span 
+            style={{
+              position: 'absolute',
+              top: '6px',
+              right: '6px',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: '#FF3B30',
+              border: '2px solid #FFFFFF',
+            }}
+          />
+        )}
       </button>
       {isOpen && (
-        <div className="alerts-dropdown">
-          <div className="alerts-header">Notifications</div>
-          <div className="alerts-list">
+        <div 
+          style={{
+            position: 'absolute',
+            top: '100%',
+            right: 0,
+            marginTop: '8px',
+            background: '#FFFFFF',
+            border: '1px solid rgba(0,0,0,0.1)',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            minWidth: '280px',
+            zIndex: 1000,
+          }}
+        >
+          <div 
+            style={{
+              padding: '16px 20px 12px',
+              borderBottom: '1px solid rgba(0,0,0,0.1)',
+              fontSize: '16px',
+              fontWeight: '600',
+              color: '#000000',
+            }}
+          >
+            알림
+          </div>
+          <div style={{ padding: '12px 0' }}>
             {alerts.length === 0 ? (
-              <div className="no-alerts">No new notifications</div>
+              <div 
+                style={{
+                  padding: '20px',
+                  textAlign: 'center',
+                  color: '#8E8E93',
+                  fontSize: '14px',
+                }}
+              >
+                새로운 알림이 없습니다
+              </div>
             ) : (
               alerts.map((alert, index) => (
-                <div key={index} className="alert-item">
-                  <CheckCircle size={16} className="alert-icon" />
-                  <p>{alert.message}</p>
+                <div 
+                  key={index} 
+                  style={{
+                    padding: '12px 20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    borderBottom: index < alerts.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
+                  }}
+                >
+                  <CheckCircle size={16} color="#10B981" />
+                  <p style={{ margin: 0, fontSize: '14px', color: '#000000', lineHeight: '1.4' }}>
+                    {alert.message}
+                  </p>
                 </div>
               ))
             )}

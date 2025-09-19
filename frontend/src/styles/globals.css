@@ -127,6 +127,22 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* 한글 텍스트 줄바꿈 개선 */
+  * {
+    word-break: keep-all;
+    word-wrap: break-word;
+    white-space: normal;
+    writing-mode: horizontal-tb;
+  }
+
+  /* 한글 텍스트가 포함된 요소들에 대한 추가 설정 */
+  p, span, div, h1, h2, h3, h4, h5, h6, label, button, input, textarea {
+    word-break: keep-all;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: none;
+  }
 }
 
 /**
@@ -186,4 +202,17 @@
 
 html {
   font-size: var(--font-size);
+}
+
+/* Finance Screen KPI Cards Responsive Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
   Layers,
@@ -37,6 +38,7 @@ const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
 
 export const DashboardScreen: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const { summary: metricsSummary, daily: metricsDaily } = useMetrics();
   const { summary: reviewSummary } = useReviews();
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -51,11 +53,12 @@ export const DashboardScreen: React.FC = () => {
     : 0;
 
   const openReviewDetail = () => {
-    const handler = (window as any).__openReviewDetail;
-    if (handler && currentUser?.business_id) {
-      handler(currentUser.business_id);
+    if (currentUser?.business_id) {
+      // React Router를 사용하여 리뷰 상세 페이지로 직접 이동
+      navigate(`/reviews/${currentUser.business_id}`);
     } else {
-      (window as any).__goPage?.('reviews', currentUser?.business_id);
+      // business_id가 없는 경우 일반 리뷰 페이지로 이동
+      navigate('/reviews');
     }
   };
 
@@ -208,7 +211,7 @@ export const DashboardScreen: React.FC = () => {
           display: 'flex',
           flexDirection: 'column',
           gap: 20,
-          background: 'var(--app-background)',
+          background: '#FFFFFF',
           minHeight: 0,
         }}
       >
@@ -223,22 +226,79 @@ export const DashboardScreen: React.FC = () => {
             boxShadow: '0 16px 32px rgba(30,79,158,0.12)',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#1E4F9E', letterSpacing: 2 }}>SIGNAL DASHBOARD</span>
-              <h2 style={{ fontSize: 20, fontWeight: 800, color: '#123B70' }}>매출·원가·순이익 한눈에 보기</h2>
-              <p style={{ fontSize: 12, color: '#42526E', lineHeight: 1.6 }}>
-                매출과 고객 반응을 한 카드에서 요약했습니다. 색상 신호를 눌러 채널별 흐름과 즉시 실행 시나리오를 확인하세요.
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 14, background: 'rgba(255,255,255,0.7)' }}>
-              <Circle size={10} fill={signalDotColor} color={signalDotColor} />
-              <div style={{ display: 'grid', gap: 2 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: signalDotColor }}>{signalLevel.label}</span>
-                <span style={{ fontSize: 11, color: '#42526E' }}>{signalLevel.description}</span>
-              </div>
+          {/* 1단: 라벨 */}
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#1E4F9E', letterSpacing: 2 }}>SIGNAL DASHBOARD</span>
+          
+          {/* 2단: 제목 (1줄, 말줄임) */}
+          <h2 style={{ 
+            fontSize: 20, 
+            fontWeight: 800, 
+            color: '#123B70',
+            margin: 0,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            wordBreak: 'keep-all'
+          }}>매출·원가·순이익 한눈에 보기</h2>
+          
+          {/* 3단: 위기 신호 배너 (테마 카드) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '12px 16px',
+            borderRadius: 16,
+            background: signalLevel.tone === 'green' 
+              ? 'linear-gradient(135deg, rgba(46,174,79,0.12), rgba(46,174,79,0.06))'
+              : signalLevel.tone === 'amber'
+              ? 'linear-gradient(135deg, rgba(245,164,90,0.12), rgba(245,164,90,0.06))'
+              : 'linear-gradient(135deg, rgba(198,58,58,0.12), rgba(198,58,58,0.06))',
+            border: `1px solid ${signalLevel.tone === 'green' 
+              ? 'rgba(46,174,79,0.3)'
+              : signalLevel.tone === 'amber'
+              ? 'rgba(245,164,90,0.3)'
+              : 'rgba(198,58,58,0.3)'}`,
+            boxShadow: signalLevel.tone === 'green'
+              ? '0 8px 24px rgba(46,174,79,0.08)'
+              : signalLevel.tone === 'amber'
+              ? '0 8px 24px rgba(245,164,90,0.08)'
+              : '0 8px 24px rgba(198,58,58,0.08)',
+            width: '100%'
+          }}>
+            <Circle size={12} fill={signalDotColor} color={signalDotColor} />
+            <div style={{ display: 'grid', gap: 2, flex: 1 }}>
+              <span style={{ 
+                fontSize: 13, 
+                fontWeight: 700, 
+                color: signalDotColor,
+                wordBreak: 'keep-all',
+                whiteSpace: 'normal'
+              }}>{signalLevel.label}</span>
+              <span style={{ 
+                fontSize: 11, 
+                color: '#42526E',
+                wordBreak: 'keep-all',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal',
+                lineHeight: 1.4
+              }}>{signalLevel.description}</span>
             </div>
           </div>
+          
+          {/* 4단: 설명 문단 */}
+          <p style={{ 
+            fontSize: 12, 
+            color: '#42526E', 
+            lineHeight: 1.6,
+            margin: 0,
+            wordBreak: 'keep-all',
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'normal'
+          }}>
+            매출과 고객 반응을 한 카드에서 요약했습니다. 색상 신호를 눌러 채널별 흐름과 즉시 실행 시나리오를 확인하세요.
+          </p>
 
           <button
             type="button"
@@ -261,7 +321,15 @@ export const DashboardScreen: React.FC = () => {
                   <TrendingUp size={16} /> 매출 추이
                 </span>
                 <strong style={{ fontSize: 22, color: '#123B70' }}>{formatCurrency(totalNetSales)}</strong>
-                <span style={{ fontSize: 12, color: '#42526E' }}>{salesNarrative}</span>
+                <span style={{ 
+                  fontSize: 12, 
+                  color: '#42526E',
+                  wordBreak: 'keep-all',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal',
+                  lineHeight: 1.5
+                }}>{salesNarrative}</span>
               </div>
               {showBreakdown ? <ChevronUp color="#1E4F9E" size={18} /> : <ChevronDown color="#1E4F9E" size={18} />}
             </div>
@@ -310,12 +378,35 @@ export const DashboardScreen: React.FC = () => {
                 </div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {channelBreakdown.map((item, index) => (
-                    <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#123B70', fontSize: 12 }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div key={item.name} style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      gap: 4, 
+                      color: '#123B70', 
+                      fontSize: 12,
+                      minWidth: 0
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 10, height: 10, borderRadius: '50%', background: channelPalette[index % channelPalette.length] }} />
-                        {item.name}
-                      </span>
-                      <strong>{formatCurrency(item.value)}</strong>
+                        <span style={{ 
+                          wordBreak: 'keep-all',
+                          wordWrap: 'break-word',
+                          overflowWrap: 'break-word',
+                          whiteSpace: 'normal'
+                        }}>{item.name}</span>
+                      </div>
+                      <div style={{ 
+                        marginLeft: 16,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: '#1E4F9E',
+                        wordBreak: 'keep-all',
+                        wordWrap: 'break-word',
+                        overflowWrap: 'break-word',
+                        whiteSpace: 'normal'
+                      }}>
+                        {formatCurrency(item.value)}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -352,15 +443,17 @@ export const DashboardScreen: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#1E4F9E', fontSize: 12, fontWeight: 600 }}>
               <Layers size={16} /> 원가 현황
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-              <div style={{ display: 'grid', gap: 6 }}>
-                <strong style={{ fontSize: 20, color: '#123B70' }}>{formatCurrency(totalCost)}</strong>
-                <span style={{ fontSize: 12, color: '#42526E' }}>{costNarrative}</span>
-              </div>
-              <div style={{ display: 'grid', gap: 4, textAlign: 'right', fontSize: 11, color: '#42526E' }}>
-                <span>평균 일 원가 {metricsDaily && metricsDaily.length ? `${((totalCost / metricsDaily.length) / 10000).toFixed(1)}만` : '-'}원</span>
-                <span>정산 지연 {metricsSummary?.settlement_delay ?? 0}건</span>
-              </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong style={{ fontSize: 20, color: '#123B70' }}>{formatCurrency(totalCost)}</strong>
+              <span style={{ 
+                fontSize: 12, 
+                color: '#42526E',
+                wordBreak: 'keep-all',
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'normal',
+                lineHeight: 1.5
+              }}>{costNarrative}</span>
             </div>
           </div>
 
@@ -374,14 +467,23 @@ export const DashboardScreen: React.FC = () => {
               boxShadow: '0 12px 26px rgba(30,79,158,0.1)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <PiggyBank size={18} color="#1E4F9E" />
-              <div style={{ display: 'grid', gap: 4 }}>
-                <span style={{ fontSize: 12, color: '#1E4F9E', fontWeight: 600 }}>순수익 추이</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#1E4F9E', fontSize: 12, fontWeight: 600 }}>
+              <PiggyBank size={16} /> 순수익 추이
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <div style={{ display: 'grid', gap: 6 }}>
                 <strong style={{ fontSize: 20, color: '#123B70' }}>{formatCurrency(totalProfit)}</strong>
+                <span style={{ 
+                  fontSize: 12, 
+                  color: '#42526E',
+                  wordBreak: 'keep-all',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal',
+                  lineHeight: 1.5
+                }}>{profitNarrative}</span>
               </div>
             </div>
-            <span style={{ fontSize: 12, color: '#42526E' }}>{profitNarrative}</span>
           </div>
         </Card>
 
@@ -421,7 +523,15 @@ export const DashboardScreen: React.FC = () => {
                 : '데이터 준비중'}
             </span>
           </div>
-          <span style={{ fontSize: 12, color: '#42526E' }}>{reviewNarrative}</span>
+          <span style={{ 
+            fontSize: 12, 
+            color: '#42526E',
+            wordBreak: 'keep-all',
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
+            whiteSpace: 'normal',
+            lineHeight: 1.5
+          }}>{reviewNarrative}</span>
         </Card>
       </main>
     </div>

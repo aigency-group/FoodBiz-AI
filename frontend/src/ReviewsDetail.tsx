@@ -243,7 +243,15 @@ export const ReviewsDetail: React.FC<Props> = ({ onBack, businessId }) => {
                   </span>
                   <span style={{ fontSize: 11, color: "#94A3B8" }}>{new Date(review.reviewed_at).toLocaleString()}</span>
                 </div>
-                <p style={{ fontSize: 13, color: "#344054", lineHeight: 1.5 }}>{review.content}</p>
+                <p style={{ 
+                  fontSize: 13, 
+                  color: "#344054", 
+                  lineHeight: 1.5,
+                  wordBreak: 'keep-all',
+                  wordWrap: 'break-word',
+                  overflowWrap: 'break-word',
+                  whiteSpace: 'normal'
+                }}>{review.content}</p>
                 <span style={{ fontSize: 11, color: "#2563EB" }}>{review.source}</span>
               </div>
             ))}
