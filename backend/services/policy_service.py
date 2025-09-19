@@ -11,6 +11,18 @@ STATUS_COLORS = {
 }
 
 
+def _split_features(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    separators = [";", "\n", "|"]
+    features = [value]
+    for sep in separators:
+        if sep in value:
+            features = [item.strip() for item in value.split(sep)]
+            break
+    return [item for item in (f.strip() for f in features) if item]
+
+
 def list_policy_recommendations(business_id: str) -> List[Dict[str, Any]]:
     response = (
         supabase.table("policy_recommendations")
@@ -23,6 +35,7 @@ def list_policy_recommendations(business_id: str) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for item in items:
         product = item.get("policy_products") or {}
+        features = _split_features(product.get("documents")) or _split_features(product.get("application_method"))
         results.append(
             {
                 "recommendation_id": item.get("id"),
@@ -37,6 +50,7 @@ def list_policy_recommendations(business_id: str) -> List[Dict[str, Any]]:
                 "application_method": product.get("application_method"),
                 "rationale": item.get("rationale"),
                 "priority": item.get("priority"),
+                "features": features,
             }
         )
     return results
@@ -67,25 +81,26 @@ def list_policy_workflows(business_id: str) -> List[Dict[str, Any]]:
     return workflows
 
 
-def _split_features(value: Optional[str]) -> List[str]:
-    if not value:
-        return []
-    separators = [";", "\n", "|"]
-    features = [value]
-    for sep in separators:
-        if sep in value:
-            features = [item.strip() for item in value.split(sep)]
-            break
-    return [item for item in (f.strip() for f in features) if item]
-
-
-def list_policy_products(group_name: str | None = None) -> List[Dict[str, Any]]:
-    query = supabase.table("policy_products").select(
+def list_policy_products(
+    group_name: str | None = None,
+    query_text: str | None = None,
+    limit: int = 20,
+) -> List[Dict[str, Any]]:
+    builder = supabase.table("policy_products").select(
         "id, name, group_name, limit_amount, interest_rate, term, eligibility, documents, application_method"
     )
     if group_name:
-        query = query.eq("group_name", group_name)
-    response = query.order("group_name", desc=False).execute()
+        builder = builder.eq("group_name", group_name)
+    if query_text:
+        pattern = f"%{query_text}%"
+        builder = builder.or_(
+            "name.ilike.{pattern},eligibility.ilike.{pattern}"
+            .replace("{pattern}", pattern)
+        )
+    if limit:
+        builder = builder.limit(limit)
+
+    response = builder.order("group_name", desc=False).execute()
     rows = response.data or []
 
     grouped: Dict[str, List[Dict[str, Any]]] = {}

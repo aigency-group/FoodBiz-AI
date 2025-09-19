@@ -30,7 +30,8 @@ from services.supabase_client import supabase
 from services import rag_service, conversation_service
 from app.services.hybrid_router import route as hybrid_route
 from app.services.metrics_service import fetch_timeseries, llm_explain_timeseries
-from app.services import rag_indexer
+from app.services.context_builder import build_context
+from app.prompts.system_prompt import build_system_prompt
 from services.metrics_service import get_metrics_summary, list_metrics_daily, DATA_DELAY_NOTICE
 from services.reviews_service import (
     get_review_summary,
@@ -75,9 +76,17 @@ def _resolve_range(date_from: Optional[date], date_to: Optional[date]) -> tuple[
     return start, end
 
 
-async def _generate_llm_answer(query: str, contexts: Optional[list[str]] = None) -> str:
+async def _generate_llm_answer(
+    query: str,
+    system_prompt: str,
+    contexts: Optional[list[str]] = None,
+) -> str:
     final_response = ""
-    async for event in rag_service.stream_chat_response(query, extra_context=contexts):
+    async for event in rag_service.stream_chat_response(
+        query,
+        system_prompt=system_prompt,
+        extra_context=contexts,
+    ):
         if event["type"] == "final":
             final_response = event["response"]
     return final_response
@@ -401,71 +410,56 @@ async def rag_query(payload: models.RagQueryRequest, business_id: str | None = Q
             role="user",
             message=payload.query,
         )
-
-    context_lines, supplemental_sources = _gather_business_context(biz_id)
-
     try:
+        raw_from = _parse_iso_date(payload.date_from)
+        raw_to = _parse_iso_date(payload.date_to)
+        start_date, end_date = _resolve_range(raw_from, raw_to)
+
+        bundle = build_context(
+            payload.query,
+            biz_id,
+            date_from=start_date,
+            date_to=end_date,
+        )
+
+        sources = list(bundle.sources)
+        system_prompt = build_system_prompt(bundle.meta)
+
+        metrics_series = bundle.metrics.get("series", []) if bundle.metrics else []
+        metrics_stats = bundle.metrics.get("stats", {}) if bundle.metrics else {}
+        if metrics_series:
+            sql_range_meta = {"from": metrics_series[0]["x"], "to": metrics_series[-1]["x"]}
+
+        if metrics_series:
+            calculations = _format_calculations(metrics_stats)
+
         if router_decision == "SQL_TIME_SERIES":
-            date_from = _parse_iso_date(payload.date_from)
-            date_to = _parse_iso_date(payload.date_to)
-            start_date, end_date = _resolve_range(date_from, date_to)
-            sql_range_meta = {"from": start_date.isoformat(), "to": end_date.isoformat()}
-
-            series, stats = fetch_timeseries(biz_id or "", start_date, end_date)
-            calculations = _format_calculations(stats)
-
-            if series:
+            
+            if metrics_series:
                 charts = [
                     {
                         "type": "timeseries",
                         "series": [
                             {
                                 "name": "매출",
-                                "data": series,
+                                "data": metrics_series,
                             }
                         ],
                     }
                 ]
-                context_str = "\n".join(context_lines) if context_lines else None
-                answer = await llm_explain_timeseries(series, stats, context=context_str)
+                context_str = "\n".join(bundle.contexts) if bundle.contexts else None
+                answer = await llm_explain_timeseries(metrics_series, metrics_stats, context=context_str)
             else:
                 answer = "요청하신 기간에 매출 데이터가 없어 추이를 보여드릴 수 없습니다. 데이터가 수집되면 다시 안내드릴게요."
-                if context_lines:
-                    answer += "\n" + "\n".join(context_lines)
-
-            sources.append(
-                {
-                    "type": "sql",
-                    "name": "public.metrics_daily",
-                    "meta": {
-                        "business_id": biz_id or "unknown",
-                        **sql_range_meta,
-                    },
-                }
-            )
+                if bundle.contexts:
+                    answer += "\n" + "\n".join(bundle.contexts)
         else:
-            documents = rag_indexer.vector_search(payload.query)
-            top_k = len(documents)
-            contexts: List[str] = []
-            for doc in documents:
-                metadata = doc.get("metadata") or {}
-                source_name = str(metadata.get("source") or "document")
-                snippet = doc.get("page_content", "")
-                contexts.append(f"출처: {source_name}\n내용:\n{snippet}")
-                meta_payload = {k: str(v) for k, v in metadata.items()}
-                sources.append({"type": "doc", "name": source_name, "meta": meta_payload})
-
-            contexts.extend(context_lines)
-            answer = await _generate_llm_answer(payload.query, contexts or None)
-
-            if biz_id:
-                sources.append(
-                    {
-                        "type": "sql",
-                        "name": "public.metrics_daily",
-                        "meta": {"suggested_range": "최근 30일", "business_id": biz_id},
-                    }
-                )
+            top_k = len(bundle.documents)
+            answer = await _generate_llm_answer(
+                payload.query,
+                system_prompt,
+                bundle.contexts or None,
+            )
 
         if biz_id:
             conversation_service.log_message(
@@ -473,8 +467,6 @@ async def rag_query(payload: models.RagQueryRequest, business_id: str | None = Q
                 role="assistant",
                 message=answer,
             )
-
-        sources.extend(supplemental_sources)
 
         latency_ms = round((time.perf_counter() - start_ts) * 1000, 2)
         log_payload = {
@@ -627,8 +619,12 @@ async def policy_applications(business_id: str):
 
 
 @app.get("/policy/products", response_model=models.PolicyProductsResponse, tags=["Policy"])
-async def policy_products(group_name: str | None = Query(None)):
-    groups = list_policy_products(group_name)
+async def policy_products(
+    group: str | None = Query(None),
+    q: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+):
+    groups = list_policy_products(group, q, limit)
     return {"groups": groups}
 
 
